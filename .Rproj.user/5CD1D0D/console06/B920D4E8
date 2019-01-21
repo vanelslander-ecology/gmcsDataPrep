@@ -1,0 +1,39 @@
+[0m[0KMicrosoft Windows [Version 6.1.7601][0K[?25l
+Copyright (c) 2009 Microsoft Corporation.  All rights reserved.[0K
+[0K
+C:\Ian\Git\gmcsDataPrep>[0K[?25hg[0Ki[0Kt[0K[29G[?25lC:\Ian\Git\gmcsDataPrep>git i[0K[?25hn[0Ki[0Kt[0K]0;  - git  init[?25l
+[0K[?25hInitialized empty Git repository in C:/Ian/Git/gmcsDataPrep/.git/[0K[?25l
+[0K[?25h]0; [?25l
+C:\Ian\Git\gmcsDataPrep>[0K[?25hg[0Ki[0Kt[0K[29G[?25lC:\Ian\Git\gmcsDataPrep>git a[0K[?25hd[0Kd[0K[33G[?25lC:\Ian\Git\gmcsDataPrep>git add R[0K[?25hE[0KA[0KD[0KM[0KE[0K.[0Kr[0K[?25lC:\Ian\Git\gmcsDataPrep>git add README.[0K[?25hm[0Kd[0K[?25l
+[0K[?25h]0;  - git  add README.mdfatal: pathspec 'README.md' did not match any files[0K[?25l
+[0K[?25h]0; [?25l
+C:\Ian\Git\gmcsDataPrep>[0K[?25hg[0K[?25lC:\Ian\Git\gmcsDataPrep>[0K[?25he[0Kc[0Kh[0Ko[0K[30G[?25lC:\Ian\Git\gmcsDataPrep>echo '[0K[?25hX[0K[33G[?25lC:\Ian\Git\gmcsDataPrep>echo 'X g[0K[?25hm[0Kc[0Ks[0KD[0Ka[0Kt[0Ka[0KP[0Kr[0Ke[0Kp[0K"[0K[47G[?25lC:\Ian\Git\gmcsDataPrep>echo 'X gmcsDataPrep" >[0K[?25h>[0K[50G[?25lC:\Ian\Git\gmcsDataPrep>echo 'X gmcsDataPrep" >> R[0K[?25he[0Ka[0K[?25lC:\Ian\Git\gmcsDataPrep>echo 'X gmcsDataPrep" >> Re[0K[?25h[?25lC:\Ian\Git\gmcsDataPrep>echo 'X gmcsDataPrep" >> R[0K[?25hE[0KA[0KD[0KM[0KE[0K.[0Km[0Kd[0K[58G[56G[55G[54G[53G[52G[51G[50G[49G[48G[47G[46G[45G[44G[43G[42G[41G[40G[39G[38G[37G[36G[35G[34G[33G[32G[?25lC:\Ian\Git\gmcsDataPrep>echo ' gmcsDataPrep" >> README.md[0K[31G[?25h[?25lC:\Ian\Git\gmcsDataPrep>echo '# gmcsDataPrep" >> README.md[0K[32G[?25h[33G[34G[35G[36G[37G[38G[39G[40G[41G[42G[43G[44G[45G[46G[47G[48G[49G[50G[51G[52G[53G[54G[56G[57G[58G[59G[?25l
+'# gmcsDataPrep" >> README.md[0K
+[0K
+C:\Ian\Git\gmcsDataPrep>[0K[?25hecho '# gmcsDataPrep" >> README.md[0K[58G[57G[56G[55G[54G[53G[52G[51G[50G[48G[47G[46G[45G[44G[43G[42G[41G[40G[39G[38G[37G[36G[35G[34G[33G[32G[31G[?25lC:\Ian\Git\gmcsDataPrep>echo # gmcsDataPrep" >> README.md[0K[30G[?25h[?25lC:\Ian\Git\gmcsDataPrep>echo '# gmcsDataPrep" >> README.md[0K[31G[?25h[32G[31G[?25lC:\Ian\Git\gmcsDataPrep>echo # gmcsDataPrep" >> README.md[0K[30G[?25h[?25lC:\Ian\Git\gmcsDataPrep>echo "# gmcsDataPrep" >> README.md[0K[31G[?25h[32G[33G[34G[35G[36G[37G[38G[39G[40G[41G[42G[43G[44G[46G[47G[48G[49G[50G[51G[52G[53G[54G[55G[56G[57G[58G[59G[?25l
+[0K[?25h[?25l
+C:\Ian\Git\gmcsDataPrep>[0K[?25hg[0Ki[0Kt[0K[29G[?25lC:\Ian\Git\gmcsDataPrep>git r[0K[?25he[0Km[0Ko[0Kt[0Ke[0K[36G[?25lC:\Ian\Git\gmcsDataPrep>git remote a[0K[?25hd[0Kd[0K[40G[?25lC:\Ian\Git\gmcsDataPrep>git remote add o[0K[?25hr[0Ki[0Kg[0Ki[0Kn[0K[47G[?25lC:\Ian\Git\gmcsDataPrep>git remote add origin h[0K[?25ht[0Kt[0Kp[0Ks[0K:[0K/[0K/[0Kg[0Ki[0Kt[0Kh[0Ku[0Kb[0K.[0Kc[0Ko[0Km[0K/[0Ki[0Ka[0Kn[0Km[0Ks[0Ke[0Kd[0Kd[0Ky[0K/[0Kg[0Km[0Kc[0Ks[0KD[0Ka[0Kt[0Ka[0KP[0Kr[0Ke[0Kp[0Kg[0Ki[0K[?25lC:\Ian\Git\gmcsDataPrep>git remote add origin https://github.com/ianmseddy/gmcsDataPrepg[0K[?25h[?25lC:\Ian\Git\gmcsDataPrep>git remote add origin https://github.com/ianmseddy/gmcsDataPrep[0K[?25h.[0Kg[0Ki[0Kt[0K[?25l
+[0K[?25h]0;  - git  remote add origin https://github.com/ianmseddy/gmcsDataPrep.git]0; [?25l
+C:\Ian\Git\gmcsDataPrep>[0K[?25hg[0Ki[0Kt[0K[29G[?25lC:\Ian\Git\gmcsDataPrep>git s[0K[?25ht[0Ka[0Kg[0Ke[0K[35G[34G[?25lC:\Ian\Git\gmcsDataPrep>git stag[0K[?25h[?25lC:\Ian\Git\gmcsDataPrep>git sta[0K[?25h[?25lC:\Ian\Git\gmcsDataPrep>git st[0K[?25ha[0Kt[0Ku[0Ks[0K[?25l
+[0K[?25h]0;  - git  statusOn branch master[0K[?25l
+[0K
+No commits yet[0K
+[0K
+Untracked files:[0K
+  (use "git add <file>..." to include in what will be committed)[0K
+[0K
+        [0;31m.Rproj.user/[0m[0K
+        [0;31mLICENSE[0m[0K
+        [0;31mREADME.md[0m[0K
+        [0;31mREADME.txt[0m[0K
+        [0;31mcitation.bib[0m[0K
+        [0;31mdata/[0m[0K
+        [0;31mgmcsDataPrep.R[0m[0K
+        [0;31mgmcsDataPrep.Rmd[0m[0K
+        [0;31mgmcsDataPrep.Rproj[0m[0K
+        [0;31mtests/[0m[0K
+[0K
+nothing added to commit but untracked files present (use "git add" to track)[0K
+[0K[?25h]0; [?25l
+C:\Ian\Git\gmcsDataPrep>[0K[?25hg[0Ki[0Kt[0K[29G[?25lC:\Ian\Git\gmcsDataPrep>git s[0K[?25ht[0Ka[0Kg[0Ke[0K[35G[?25lC:\Ian\Git\gmcsDataPrep>git stage -[0K[?25hA[0K[?25l
+[0K[?25h]0;  - git  stage -A
