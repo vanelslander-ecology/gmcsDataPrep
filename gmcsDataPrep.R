@@ -7,7 +7,7 @@ defineModule(sim, list(
   name = "gmcsDataPrep",
   description = NA, #"insert module description here",
   keywords = NA, # c("insert key words here"),
-  authors = c(person(c("First", "Middle"), "Last", email = "email@example.com", role = c("aut", "cre"))),
+  authors = c(person(c("Ian", "MS"), "Eddy", email = "ian.eddy@canada.ca", role = c("aut", "cre"))),
   childModules = character(0),
   version = list(SpaDES.core = "0.2.4", gmcsDataPrep = "0.0.1"),
   spatialExtent = raster::extent(rep(NA_real_, 4)),
@@ -15,22 +15,22 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list(),
+  reqdPkgs = list('data.table', 'sf'),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
-    defineParameter(".plotInitialTime", "numeric", NA, NA, NA, "This describes the simulation time at which the first plot event should occur"),
-    defineParameter(".plotInterval", "numeric", NA, NA, NA, "This describes the simulation time interval between plot events"),
-    defineParameter(".saveInitialTime", "numeric", NA, NA, NA, "This describes the simulation time at which the first save event should occur"),
-    defineParameter(".saveInterval", "numeric", NA, NA, NA, "This describes the simulation time interval between save events"),
     defineParameter(".useCache", "logical", FALSE, NA, NA, "Should this entire module be run with caching activated? This is generally intended for data-type modules, where stochasticity and time are not relevant")
   ),
   inputObjects = bind_rows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
-    expectsInput(objectName = NA, objectClass = NA, desc = NA, sourceURL = NA)
+    expectsInput(objectName = 'PSPmeasure', objectClass = 'data.table', desc = "PSP data for individual measures", sourceURL = NA),
+    expectsInput(objectName = 'PSPplot', objectClass = 'data.table', desc = "PSP data for each plot", sourceURL = NA),
+    expectsInput(objectName = 'PSPmeasure', objectClass = 'data.table', desc = "PSP plot data as sf object", sourceURL = NA),
+    expectsInput(objectName = 'studyAreaLarge', objectClass = 'SpatialPolygonsDataFrame', desc = "this area will be used to subset PSP plots before building the statistical model. Must be extensive enough to yield approrpriate sample size", sourceURL = NA),
+    expectsInput(objectName = "pastClimateDF", objectClass = "data.table", desc = "historical climate data for each plot, containing CMI and MAT data")
   ),
   outputObjects = bind_rows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
-    createsOutput(objectName = NA, objectClass = NA, desc = NA)
+    createsOutput(objectName = , objectClass = NA, desc = NA)
   )
 ))
 
@@ -168,21 +168,8 @@ Event2 <- function(sim) {
 }
 
 .inputObjects <- function(sim) {
-  # Any code written here will be run during the simInit for the purpose of creating
-  # any objects required by this module and identified in the inputObjects element of defineModule.
-  # This is useful if there is something required before simulation to produce the module
-  # object dependencies, including such things as downloading default datasets, e.g.,
-  # downloadData("LCC2005", modulePath(sim)).
-  # Nothing should be created here that does not create a named object in inputObjects.
-  # Any other initiation procedures should be put in "init" eventType of the doEvent function.
-  # Note: the module developer can check if an object is 'suppliedElsewhere' to
-  # selectively skip unnecessary steps because the user has provided those inputObjects in the
-  # simInit call, or another module will supply or has supplied it. e.g.,
-  # if (!suppliedElsewhere('defaultColor', sim)) {
-  #   sim$map <- Cache(prepInputs, extractURL('map')) # download, extract, load file from url in sourceURL
-  # }
 
-  #cacheTags <- c(currentModule(sim), "function:.inputObjects") ## uncomment this if Cache is being used
+  cacheTags <- c(currentModule(sim), "function:.inputObjects")
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
 

@@ -34,7 +34,7 @@ parameters <- list(
   #module1 = list(param1 = value1, param2 = value2),
   #module2 = list(param1 = value1, param2 = value2)
 )
-modules <- list("gmcsDataPrep")
+modules <- list("gmcsDataPrep", "PSP_Clean")
 objects <- list()
 inputs <- list()
 outputs <- list()
