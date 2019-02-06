@@ -24,13 +24,14 @@ defineModule(sim, list(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = 'PSPmeasure', objectClass = 'data.table', desc = "PSP data for individual measures", sourceURL = NA),
     expectsInput(objectName = 'PSPplot', objectClass = 'data.table', desc = "PSP data for each plot", sourceURL = NA),
-    expectsInput(objectName = 'PSPmeasure', objectClass = 'data.table', desc = "PSP plot data as sf object", sourceURL = NA),
+    expectsInput(objectName = 'PSPgis', objectClass = 'data.table', desc = "PSP plot data as sf object", sourceURL = NA),
     expectsInput(objectName = 'studyAreaLarge', objectClass = 'SpatialPolygonsDataFrame', desc = "this area will be used to subset PSP plots before building the statistical model. Must be extensive enough to yield approrpriate sample size", sourceURL = NA),
-    expectsInput(objectName = "pastClimateDF", objectClass = "data.table", desc = "historical climate data for each plot, containing CMI and MAT data")
+    expectsInput(objectName = "PSPclimData", objectClass = "data.table", desc = "climate data for each PSP",
+                 url = "https://drive.google.com/file/d/1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG/view?usp=sharing")
   ),
   outputObjects = bind_rows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
-    createsOutput(objectName = , objectClass = NA, desc = NA)
+    createsOutput(objectName = "LME_GM_model", objectClass = "model object", desc = NA)
   )
 ))
 
@@ -41,9 +42,6 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
   switch(
     eventType,
     init = {
-      ### check for more detailed object dependencies:
-      ### (use `checkObject` or similar)
-
       # do stuff for this event
       sim <- Init(sim)
 
@@ -51,60 +49,7 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
       sim <- scheduleEvent(sim, P(sim)$.plotInitialTime, "gmcsDataPrep", "plot")
       sim <- scheduleEvent(sim, P(sim)$.saveInitialTime, "gmcsDataPrep", "save")
     },
-    plot = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
 
-      #plotFun(sim) # uncomment this, replace with object to plot
-      # schedule future event(s)
-
-      # e.g.,
-      #sim <- scheduleEvent(sim, time(sim) + P(sim)$.plotInterval, "gmcsDataPrep", "plot")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
-    save = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + P(sim)$.saveInterval, "gmcsDataPrep", "save")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
-    event1 = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + increment, "gmcsDataPrep", "templateEvent")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
-    event2 = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + increment, "gmcsDataPrep", "templateEvent")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
     warning(paste("Undefined event type: '", current(sim)[1, "eventType", with = FALSE],
                   "' in module '", current(sim)[1, "moduleName", with = FALSE], "'", sep = ""))
   )
@@ -116,54 +61,22 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-  # # ! ----- EDIT BELOW ----- ! #
+ #Crop points to studyArea
+  browser()
+  tempSA <- spTransform(x = sim$studyAreaLarge, CRSobj = crs(sim$PSPgis)) %>%
+    st_as_sf(.)
+  PSP_sa <- sim$PSPgis[tempSA,]
 
-  # ! ----- STOP EDITING ----- ! #
+  #Filter other PSP datasets
+  PSPmeasure <- sim$PSPmeasure[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
+  PSPplot <- sim$PSPplot[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
 
-  return(invisible(sim))
-}
-
-### template for save events
-Save <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # do stuff for this event
-  sim <- saveFiles(sim)
-
-  # ! ----- STOP EDITING ----- ! #
-  return(invisible(sim))
-}
-
-### template for plot events
-plotFun <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # do stuff for this event
-  #Plot(sim$object)
-
-  # ! ----- STOP EDITING ----- ! #
-  return(invisible(sim))
-}
-
-### template for your event1
-Event1 <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # THE NEXT TWO LINES ARE FOR DUMMY UNIT TESTS; CHANGE OR DELETE THEM.
-  # sim$event1Test1 <- " this is test for event 1. " # for dummy unit test
-  # sim$event1Test2 <- 999 # for dummy unit test
-
-
-  # ! ----- STOP EDITING ----- ! #
-  return(invisible(sim))
-}
-
-### template for your event2
-Event2 <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # THE NEXT TWO LINES ARE FOR DUMMY UNIT TESTS; CHANGE OR DELETE THEM.
-  # sim$event2Test1 <- " this is test for event 2. " # for dummy unit test
-  # sim$event2Test2 <- 777  # for dummy unit test
-
-
-  # ! ----- STOP EDITING ----- ! #
+  #Filter by 3+ repeat measures - this info is only in PSPmeasure
+  repeats <- PSPmeasure[, .(measures = .N), by = .(OrigPlotID1, TreeNumber)] %>%
+    .[measures > 2,]
+  PSPmeasure <- PSPmeasure[OrigPlotID1 %in% repeats$OrigPlotID1,]
+  PSPplot <- PSPplot[OrigPlotID1 %in% repeats$OrigPlotID1,]
+  PSP_sa <- PSP_sa[PSP_sa$OrigPlotID1 %in% repeats$OrigPlotID1,]
   return(invisible(sim))
 }
 
@@ -173,9 +86,40 @@ Event2 <- function(sim) {
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
 
-  # ! ----- EDIT BELOW ----- ! #
+  if (!suppliedElsewhere("PSPmeasure", sim)) {
+    message("You have not supplied PSP data. Consider running module 'PSP_Clean'. Generating simulated data")
+    sim$PSPmeasure <- data.table(MeasureID = "ABPSMature_1", OrigPlotID1 = 'AB1',
+                                 OrigPlotID2 = "1", MeasureYear = 1960, TreeNumber = 1,
+                                 Species = "PB", DBH = 39.4, Height = NA)
+  }
 
-  # ! ----- STOP EDITING ----- ! #
+  if (!suppliedElsewhere("PSPplot", sim)) {
+    sim$PSPplot <- data.table(MeasureID = "ABPSMature_1", OrigPlotID1 = 'AB1',
+                                 MeasureYear = 1960, Longitude = -116.8351, Latitude = 54.40416,
+                                 Zone = 11, Easting = 510704.3, Northing = 762, PlotSize = 0.1012,
+                              baseYear = 1960, baseSA = 76)
+
+  }
+
+  if (!suppliedElsewhere("PSPgis", sim)){
+    sim$PSPgis <- st_as_sf(x = sim$PSPplot, coords = c("Longitude", "Latitude"),
+                           crs = "+proj=longlat +datum=WGS84")
+  }
+
+  if (!suppliedElsewhere("studyAreaLarge", sim)) {
+    message("studyAreaLarge not supplied. Using random polygon in Alberta")
+    sim$studyAreaLarge <- LandR::randomStudyArea(size = 1e12)
+    #This is silly
+  }
+
+  if (!suppliedElsewhere("PSPclimData", sim)) {
+
+   sim$PSPclimData <- prepInputs(targetFile = "climateNA_PSPel_1920-2017YT.csv",
+                                 url = extractURL("PSPclimData"),
+                                 destinationPath = dPath,
+                                 fun = "read.csv")
+  }
+
   return(invisible(sim))
 }
 ### add additional events as needed by copy/pasting from above
