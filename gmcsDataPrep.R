@@ -15,10 +15,12 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list('data.table', 'sf'),
+  reqdPkgs = list('data.table', 'sf', 'sp', 'raster'),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
-    defineParameter(".useCache", "logical", FALSE, NA, NA, "Should this entire module be run with caching activated? This is generally intended for data-type modules, where stochasticity and time are not relevant")
+    defineParameter(".useCache", "logical", FALSE, NA, NA, "Should this entire module be run with caching activated? This is generally intended for data-type modules, where stochasticity and time are not relevant"),
+    defineParameter("studyPeriod", "numeric", c(1958, 2011), NA, NA, "The years by which to filter climate and permanent sampling plot observations. Must be a vector of at least length 2"),
+    defineParameter("minDBH", "numeric", 10, 0, NA, "The minimum DBH allowed. Each province uses different criteria for monitoring trees, so absence of entries < min(DBH) does not equate to absence of trees.")
   ),
   inputObjects = bind_rows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
@@ -27,7 +29,7 @@ defineModule(sim, list(
     expectsInput(objectName = 'PSPgis', objectClass = 'data.table', desc = "PSP plot data as sf object", sourceURL = NA),
     expectsInput(objectName = 'studyAreaLarge', objectClass = 'SpatialPolygonsDataFrame', desc = "this area will be used to subset PSP plots before building the statistical model. Must be extensive enough to yield approrpriate sample size", sourceURL = NA),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table", desc = "climate data for each PSP",
-                 url = "https://drive.google.com/file/d/1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG/view?usp=sharing")
+                 sourceURL = "https://drive.google.com/open?id=1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG")
   ),
   outputObjects = bind_rows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
@@ -62,27 +64,105 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 ### template initialization
 Init <- function(sim) {
  #Crop points to studyArea
-  browser()
+  if (length(P(sim)$studyPeriod) < 2) {
+    stop("Please supply P(sim)$studyPeriod of length 2 or greater")
+  }
+
   tempSA <- spTransform(x = sim$studyAreaLarge, CRSobj = crs(sim$PSPgis)) %>%
     st_as_sf(.)
-  PSP_sa <- sim$PSPgis[tempSA,]
+  PSP_sa <- sim$PSPgis[tempSA,] %>% #Find how to cache this. '[' did not work
+    setkey(., OrigPlotID1)
+  #Restrict climate variables to only thosee of interest.. should be param
+  PSPclimData <- sim$PSPclimData[,.("OrigPlotID1" = ID1, Year, CMD, MAT)]
 
-  #Filter other PSP datasets
+  #Filter other PSP datasets to those in study Area
   PSPmeasure <- sim$PSPmeasure[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
   PSPplot <- sim$PSPplot[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
+  PSPclimData <- PSPclimData[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
 
-  #Filter by 3+ repeat measures - this info is only in PSPmeasure
+  #length(PSPclimData)/length(PSP_sa) should always yield a whole number.
+  #Filter data by study period
+  PSPmeasure <- PSPmeasure[MeasureYear > min(P(sim)$studyPeriod) & MeasureYear < max(P(sim)$studyPeriod),]
+  PSPplot <- PSPplot[MeasureYear > min(P(sim)$studyPeriod) & MeasureYear < max(P(sim)$studyPeriod),]
+  PSPclimData[Year > min(P(sim)$studyPeriod) & Year < max(P(sim)$studyPeriod),]
+
+  #Join data (should be small enough by now)
+  PSPmeasure <- PSPmeasure[PSPplot, on = c('MeasureID', 'OrigPlotID1', 'MeasureYear')]
+  PSPmeasure[, c('Longitude', 'Latitude', 'Easting', 'Northing', 'Zone'):= NULL]
+
+  #Filter by > 30 trees at first measurement (P) to ensure forest.
+  forestPlots <- PSPmeasure[MeasureYear == baseYear, .(measures = .N), OrigPlotID1] %>%
+    .[measures >= 30,]
+  PSPmeasure <- PSPmeasure[OrigPlotID1 %in% forestPlots$OrigPlotID1,]
+
+  #Filter by 3+ repeat measures - must be last filter criteria. Removes the most.
   repeats <- PSPmeasure[, .(measures = .N), by = .(OrigPlotID1, TreeNumber)] %>%
     .[measures > 2,]
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% repeats$OrigPlotID1,]
-  PSPplot <- PSPplot[OrigPlotID1 %in% repeats$OrigPlotID1,]
-  PSP_sa <- PSP_sa[PSP_sa$OrigPlotID1 %in% repeats$OrigPlotID1,]
+  PSPplot <- PSPplot[OrigPlotID1 %in% PSPmeasure$OrigPlotID1,]
+
+
+  #Restrict to trees > 10 DBH (P) This gets rid of some big trees. Some 15 metres tall
+  PSPmeasure <- PSPmeasure[DBH >= P(sim)$minDBH,]
+
+  #Calculate Climate Means
+  mCMD <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("mCMD" = mean(CMD)), OrigPlotID1]
+  mMAT <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("mMAT" = mean(MAT)), OrigPlotID1]
+
+  PSPplot <- PSPplot[mCMD, on = "OrigPlotID1"]
+  PSPplot <- PSPplot[mMAT, on = "OrigPlotID1"]
+
+  #At this point, we need to convert DBH/Height/species to biomass
+  browser()
+  #nee
+  test <- lapply(unique(PSPmeasure$OrigPlotID1), FUN = function(x, m = PSPmeasure, p = PSPplot, clim = PSPclimData){
+    #for each plot...
+    m <- m[OrigPlotID1 %in% x,] #subset data by plot
+    p <- p[OrigPlotID1 %in% x,]
+    clim <- clim[OrigPlotID1 %in% x,]
+    count <- nrow(m) - length(unique(m$TreeNumber))
+    #Preallocate output dataframe
+    out <- data.frame("PlotNumber"= character(count),
+                      "TreeNumber" = character(count),
+                      "Sp" = character(count),
+                      "Age" = numeric(count),
+                      "dBiomass" = numeric(count),
+                      "CensusPeriod" = character(count),
+                      "ATA" = numeric(count),
+                      "ACMDC" = numeric(count), stringsAsFactors = FALSE)
+
+    #for each tree...
+    i <- 1
+    for (n in unique(m$TreeNumber)) {
+
+      mPeriod <- m[TreeNumber == n,] %>%
+        setkey(., MeasureYear)
+      #Calculate change in biomass for each census period
+      for (y in 1:(length(mPeriod$MeasureYear) - 1)){
+        period <- paste0(mPeriod$MeasureYear[y], "-", mPeriod$MeasureYear[y + 1])
+        dBiomass <- round(
+          (mPeriod$DBH[y+1] - mPeriod$DBH[y])/(mPeriod$MeasureYear[y+1] - mPeriod$MeasureYear[y]),
+                          digits = 3) #change DBH
+        climPeriod <- clim[Year >= mPeriod$MeasureYear[y] & Year <= mPeriod$MeasureYear[y + 1]]
+        ATA <- round(mean(climPeriod$MAT) - p$mMAT[1], digits = 3)
+        ACMDC <- round(mean(climPeriod$CMD) - p$mCMD[1], digits = 3)
+        Age <- mPeriod$baseSA[1] + mPeriod$MeasureYear[y+1] - mPeriod$MeasureYear[1]
+        out[i,] <- c(x, n, as.character(mPeriod$Species[1]), Age, dBiomass, period, ATA, ACMDC)
+        i <- i + 1
+      }
+    }
+    browser()
+    return(out)
+    })
+  browser()
+
   return(invisible(sim))
 }
 
 .inputObjects <- function(sim) {
 
   cacheTags <- c(currentModule(sim), "function:.inputObjects")
+
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
 
@@ -113,11 +193,10 @@ Init <- function(sim) {
   }
 
   if (!suppliedElsewhere("PSPclimData", sim)) {
-
-   sim$PSPclimData <- prepInputs(targetFile = "climateNA_PSPel_1920-2017YT.csv",
+   sim$PSPclimData <- prepInputs(targetFile = file.path(dPath, "climateNA_PSPel_1920-2017YT.csv"),
                                  url = extractURL("PSPclimData"),
                                  destinationPath = dPath,
-                                 fun = "read.csv")
+                                 fun = "data.table::fread")
   }
 
   return(invisible(sim))
