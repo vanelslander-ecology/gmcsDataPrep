@@ -14,20 +14,22 @@ defineModule(sim, list(
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
-  documentation = list("README.txt", "gmcsDataPrep.Rmd"),
+  documentation = list("README.txt", "gmcsDataPrep.Rmd", "PredictiveEcology/pemisc@development"),
   reqdPkgs = list('data.table', 'sf', 'sp', 'raster'),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
-    defineParameter(".useCache", "logical", FALSE, NA, NA, "Should this entire module be run with caching activated? This is generally intended for data-type modules, where stochasticity and time are not relevant"),
-    defineParameter("studyPeriod", "numeric", c(1958, 2011), NA, NA, "The years by which to filter climate and permanent sampling plot observations. Must be a vector of at least length 2"),
-    defineParameter("minDBH", "numeric", 10, 0, NA, "The minimum DBH allowed. Each province uses different criteria for monitoring trees, so absence of entries < min(DBH) does not equate to absence of trees.")
+    defineParameter(".useCache", "logical", FALSE, NA, NA, desc = "Should this entire module be run with caching activated? This is generally intended for data-type modules, where stochasticity and time are not relevant"),
+    defineParameter("studyPeriod", "numeric", c(1958, 2011), NA, NA, desc = "The years by which to compute climate normals and subset sampling plot data. Must be a vector of at least length 2"),
+    defineParameter("minDBH", "numeric", 10, 0, NA, desc = "The minimum DBH allowed. Each province uses different criteria for monitoring trees, so absence of entries < min(DBH) does not equate to absence of trees."),
+    defineParameter("useHeight", "logical", TRUE, NA, NA, desc = "Should height be used to calculate biomass (in addition to DBH)"),
+    defineParameter("biomassModel", "character", "Lambert2005", NA, NA, desc =  "The model used to calculate biomass from DBH. Can be either 'Lambert2005' or 'Ung2008'")
   ),
   inputObjects = bind_rows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = 'PSPmeasure', objectClass = 'data.table', desc = "PSP data for individual measures", sourceURL = NA),
     expectsInput(objectName = 'PSPplot', objectClass = 'data.table', desc = "PSP data for each plot", sourceURL = NA),
     expectsInput(objectName = 'PSPgis', objectClass = 'data.table', desc = "PSP plot data as sf object", sourceURL = NA),
-    expectsInput(objectName = 'studyAreaLarge', objectClass = 'SpatialPolygonsDataFrame', desc = "this area will be used to subset PSP plots before building the statistical model. Must be extensive enough to yield approrpriate sample size", sourceURL = NA),
+    expectsInput(objectName = 'studyAreaLarge', objectClass = 'SpatialPolygonsDataFrame', desc = "this area will be used to subset PSP plots before building the statistical model.", sourceURL = NA),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table", desc = "climate data for each PSP",
                  sourceURL = "https://drive.google.com/open?id=1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG")
   ),
@@ -112,48 +114,96 @@ Init <- function(sim) {
   PSPplot <- PSPplot[mCMD, on = "OrigPlotID1"]
   PSPplot <- PSPplot[mMAT, on = "OrigPlotID1"]
 
-  #At this point, we need to convert DBH/Height/species to biomass
+  #Calculate biomass
+  #TODO: What are these units? tonnes? 1
+  tempOut <- pemisc::biomassCalculation(species = PSPmeasure$newSpeciesName,
+                                                   DBH = PSPmeasure$DBH,
+                                                   height = PSPmeasure$Height,
+                                                   includeHeight = P(sim)$useHeight,
+                                                   equationSource = P(sim)$biomassModel)
+  message("No biomass estimate possible for these species: ")
+  print(tempOut$missedSpecies)
+  PSPmeasure$biomass <- tempOut$biomass
   browser()
-  #nee
+  #Can calculate summary by species now. Still need to estimate growth and mortality in unobserved recruits
+  # What does this do? It does not return Plots if no species was over 50
+
+  tempBiomass <- PSPmeasure
+  tempBiomass[, PlotBiomass:=sum(biomass), by = MeasureID]
+  tempBiomass[, PlotBiomassBySpecies:=sum(biomass), by = c("newSpeciesName", "MeasureID")]
+  tempBiomass[, SpeciesPercentage:=PlotBiomassBySpecies/PlotBiomass]
+  tempBiomass <- tempBiomass[SpeciesPercentage >= 0.50,] # set as 50%
+  summaryTable <- unique(tempBiomass[,.(MeasureID, newSpeciesName, PlotBiomass)], by = "MeasureID")
+  setnames(summaryTable, "newSpeciesName", "Species")
+
   test <- lapply(unique(PSPmeasure$OrigPlotID1), FUN = function(x, m = PSPmeasure, p = PSPplot, clim = PSPclimData){
     #for each plot...
+    #sort by year. Calculate the changes in biomass, inc unobserved growth and mortality
+    browser()
     m <- m[OrigPlotID1 %in% x,] #subset data by plot
     p <- p[OrigPlotID1 %in% x,]
     clim <- clim[OrigPlotID1 %in% x,]
-    count <- nrow(m) - length(unique(m$TreeNumber))
-    #Preallocate output dataframe
-    out <- data.frame("PlotNumber"= character(count),
-                      "TreeNumber" = character(count),
-                      "Sp" = character(count),
-                      "Age" = numeric(count),
-                      "dBiomass" = numeric(count),
-                      "CensusPeriod" = character(count),
-                      "ATA" = numeric(count),
-                      "ACMDC" = numeric(count), stringsAsFactors = FALSE)
+    p <- setkey(p, MeasureYear) #Order by year
+    m <- setkey(m, TreeNumber)
+    periods <- nrow(p) - 1
+    #Preallocate dataframe
+    out <- data.frame("PlotNumber"= character(periods),
+                      "CensusPeriod" = character(periods),
+                      "annG" = numeric(periods),
+                      "annM" = numeric(periods),
+                      "annB" = numeric(periods),
+                      "ATA" = numeric(periods),
+                      "ACMD" = numeric(periods), stringsAsFactors = FALSE)
 
-    #for each tree...
-    i <- 1
-    for (n in unique(m$TreeNumber)) {
+    #For each interval
+    for (i in 1:periods) {
 
-      mPeriod <- m[TreeNumber == n,] %>%
-        setkey(., MeasureYear)
-      #Calculate change in biomass for each census period
-      for (y in 1:(length(mPeriod$MeasureYear) - 1)){
-        period <- paste0(mPeriod$MeasureYear[y], "-", mPeriod$MeasureYear[y + 1])
-        dBiomass <- round(
-          (mPeriod$DBH[y+1] - mPeriod$DBH[y])/(mPeriod$MeasureYear[y+1] - mPeriod$MeasureYear[y]),
-                          digits = 3) #change DBH
-        climPeriod <- clim[Year >= mPeriod$MeasureYear[y] & Year <= mPeriod$MeasureYear[y + 1]]
-        ATA <- round(mean(climPeriod$MAT) - p$mMAT[1], digits = 3)
-        ACMDC <- round(mean(climPeriod$CMD) - p$mCMD[1], digits = 3)
-        Age <- mPeriod$baseSA[1] + mPeriod$MeasureYear[y+1] - mPeriod$MeasureYear[1]
-        out[i,] <- c(x, n, as.character(mPeriod$Species[1]), Age, dBiomass, period, ATA, ACMDC)
-        i <- i + 1
-      }
+      #Calculate climate stuff
+      ATA <- mean(clim$MAT[clim$Year >= p$MeasureYear[i] &
+                             clim$Year <= p$MeasureYear[i+1]]) - p$mMAT[1]
+      ACMD <- mean(clim$CMD[clim$Year >= p$MeasureYear[i] &
+                              clim$Year <= p$MeasureYear[i+1]]) - p$mCMD[1]
+
+
+      period <- paste0(p$MeasureYear[i], "-", p$MeasureYear[i+1])
+      m1 <- m[MeasureYear == p$MeasureYear[i]]
+      m2 <- m[MeasureYear == p$MeasureYear[i + 1]]
+
+
+
+      censusLength <- p$MeasureYear[i + 1] - p$MeasureYear[i]
+      living1 <- m1[m1$TreeNumber %in% m2$TreeNumber]
+      living2 <- m2[m2$TreeNumber %in% m1$TreeNumber]
+      dead <- m1[!m1$TreeNumber %in% m2$TreeNumber]
+      newborn <- m2[!m2$TreeNumber %in% m1$TreeNumber]
+
+      #Find observed annual changes in mortality and growth
+      observedGrowth <- sum(living2$biomass - living1$biomass)/censusLength +
+        sum(newborn$biomass)/(censusLength/2) #measured from the midpoint of census
+      observedMortality <- sum(dead$biomass)/censusLength
+      #Find unobserved growth and mortality
+      #Unobserved recruits U = N * R * M * L
+      #N = # of trees with DBH between 10 and 15
+      N <- nrow(m2[DBH <= 15]) #TODO ask Yong if this is m2, or total
+      #R = number of recruits between two successive censuses (trees in t2 not in t1)/census length
+      R <- nrow(newborn)/censusLength
+      #M = Mortality rate, number of trees with DBH between 10 and 15 that died between two census/interval length
+      M <- nrow(dead[DBH <= 15,])/censusLength
+      #L = census interval length
+
+      #Then calculate the median growth of the 10-15 DBH class, assume they grew to the midpoint.
+      UnobservedR <- N * R * M * censusLength
+      UnobservedM <- UnobservedR * median(m2$biomass[m2$DBH <= 15])/censusLength/2
+      #assume unobserved trees died at midpoint. I think this overestimates growth and mortality
+      totalM <- UnobservedM + observedMortality
+      totalG <- UnobservedM + observedGrowth
+      out[i,] <- c(p$OrigPlotID1[1], period, totalG, totalM, totalG-totalM, ATA, ACMD)
     }
+
     browser()
     return(out)
     })
+
   browser()
 
   return(invisible(sim))
