@@ -107,6 +107,11 @@ Init <- function(sim) {
   #Restrict to trees > 10 DBH (P) This gets rid of some big trees. Some 15 metres tall
   PSPmeasure <- PSPmeasure[DBH >= P(sim)$minDBH,]
 
+  #Plot data has duplicate entries that I don't believe are necessary.
+  #I remove them here in case they influence climate means
+  PSPplot <- PSPplot[, MeasureID := NULL]
+  PSPplot <- PSPplot[!duplicated(PSPplot)]
+
   #Calculate Climate Means
   mCMD <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("mCMD" = mean(CMD)), OrigPlotID1]
   mMAT <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("mMAT" = mean(MAT)), OrigPlotID1]
@@ -115,7 +120,6 @@ Init <- function(sim) {
   PSPplot <- PSPplot[mMAT, on = "OrigPlotID1"]
 
   #Calculate biomass
-  #TODO: What are these units? tonnes? 1
   tempOut <- pemisc::biomassCalculation(species = PSPmeasure$newSpeciesName,
                                                    DBH = PSPmeasure$DBH,
                                                    height = PSPmeasure$Height,
@@ -126,16 +130,14 @@ Init <- function(sim) {
   PSPmeasure$biomass <- tempOut$biomass
   PSPmeasure <- PSPmeasure[biomass != 0]
   #Must remove 0 before calculating mortality and growth.
-
-  plotSppChange <- lapply(unique(PSPmeasure$OrigPlotID1), FUN = function(x, m = PSPmeasure, p = PSPplot, clim = PSPclimData){
-    #for each plot...
+  browser()
+  plotSppChange <- Cache(FUN = lapply, unique(PSPmeasure$OrigPlotID1),
+                         function(x, m = PSPmeasure, p = PSPplot, clim = PSPclimData){
     #sort by year. Calculate the changes in biomass, inc unobserved growth and mortality
     m <- m[OrigPlotID1 %in% x,] #subset data by plot
     p <- p[OrigPlotID1 %in% x,]
 
     #p has duplicates due to plotID2. Must remove.
-    p <- p[, MeasureID := NULL]
-    p <- p[!duplicated(p)]
     clim <- clim[OrigPlotID1 %in% x,]
     p <- setkey(p, MeasureYear) #Order by year
     m <- setkey(m, TreeNumber)
@@ -151,14 +153,13 @@ Init <- function(sim) {
     #                   "ACMD" = numeric(periods), stringsAsFactors = FALSE)
 
     #For each interval
-    periodSums <- lapply(1:periods, FUN = function(i, M = m, P = p, Clim = clim){
+    periodSums <- lapply(1:periods, function(i, M = m, P = p, Clim = clim){
 
       #Calculate climate variables
       ATA <- mean(Clim$MAT[Clim$Year >= p$MeasureYear[i] &
                              Clim$Year <= p$MeasureYear[i+1]]) - p$mMAT[1]
       ACMD <- mean(Clim$CMD[Clim$Year >= p$MeasureYear[i] &
                               Clim$Year <= p$MeasureYear[i+1]]) - p$mCMD[1]
-
       period <- paste0(P$MeasureYear[i], "-", P$MeasureYear[i+1])
       m1 <- M[MeasureYear == P$MeasureYear[i]]
       m2 <- M[MeasureYear == P$MeasureYear[i + 1]]
@@ -223,7 +224,7 @@ Init <- function(sim) {
     })
 
   sim$PSPmodelData <- rbindlist(plotSppChange)
-  browser()
+
   return(invisible(sim))
 }
 
