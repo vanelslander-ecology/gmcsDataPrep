@@ -124,88 +124,106 @@ Init <- function(sim) {
   message("No biomass estimate possible for these species: ")
   print(tempOut$missedSpecies)
   PSPmeasure$biomass <- tempOut$biomass
-  browser()
-  #Can calculate summary by species now. Still need to estimate growth and mortality in unobserved recruits
-  # What does this do? It does not return Plots if no species was over 50
+  PSPmeasure <- PSPmeasure[biomass != 0]
+  #Must remove 0 before calculating mortality and growth.
 
-  tempBiomass <- PSPmeasure
-  tempBiomass[, PlotBiomass:=sum(biomass), by = MeasureID]
-  tempBiomass[, PlotBiomassBySpecies:=sum(biomass), by = c("newSpeciesName", "MeasureID")]
-  tempBiomass[, SpeciesPercentage:=PlotBiomassBySpecies/PlotBiomass]
-  tempBiomass <- tempBiomass[SpeciesPercentage >= 0.50,] # set as 50%
-  summaryTable <- unique(tempBiomass[,.(MeasureID, newSpeciesName, PlotBiomass)], by = "MeasureID")
-  setnames(summaryTable, "newSpeciesName", "Species")
-
-  test <- lapply(unique(PSPmeasure$OrigPlotID1), FUN = function(x, m = PSPmeasure, p = PSPplot, clim = PSPclimData){
+  plotSppChange <- lapply(unique(PSPmeasure$OrigPlotID1), FUN = function(x, m = PSPmeasure, p = PSPplot, clim = PSPclimData){
     #for each plot...
     #sort by year. Calculate the changes in biomass, inc unobserved growth and mortality
-    browser()
     m <- m[OrigPlotID1 %in% x,] #subset data by plot
     p <- p[OrigPlotID1 %in% x,]
+
+    #p has duplicates due to plotID2. Must remove.
+    p <- p[, MeasureID := NULL]
+    p <- p[!duplicated(p)]
     clim <- clim[OrigPlotID1 %in% x,]
     p <- setkey(p, MeasureYear) #Order by year
     m <- setkey(m, TreeNumber)
     periods <- nrow(p) - 1
+
     #Preallocate dataframe
-    out <- data.frame("PlotNumber"= character(periods),
-                      "CensusPeriod" = character(periods),
-                      "annG" = numeric(periods),
-                      "annM" = numeric(periods),
-                      "annB" = numeric(periods),
-                      "ATA" = numeric(periods),
-                      "ACMD" = numeric(periods), stringsAsFactors = FALSE)
+    # out <- data.frame("PlotNumber"= character(periods),
+    #                   "CensusPeriod" = character(periods),
+    #                   "annG" = numeric(periods),
+    #                   "annM" = numeric(periods),
+    #                   "annB" = numeric(periods),
+    #                   "ATA" = numeric(periods),
+    #                   "ACMD" = numeric(periods), stringsAsFactors = FALSE)
 
     #For each interval
-    for (i in 1:periods) {
+    periodSums <- lapply(1:periods, FUN = function(i, M = m, P = p, Clim = clim){
 
-      #Calculate climate stuff
-      ATA <- mean(clim$MAT[clim$Year >= p$MeasureYear[i] &
-                             clim$Year <= p$MeasureYear[i+1]]) - p$mMAT[1]
-      ACMD <- mean(clim$CMD[clim$Year >= p$MeasureYear[i] &
-                              clim$Year <= p$MeasureYear[i+1]]) - p$mCMD[1]
+      #Calculate climate variables
+      ATA <- mean(Clim$MAT[Clim$Year >= p$MeasureYear[i] &
+                             Clim$Year <= p$MeasureYear[i+1]]) - p$mMAT[1]
+      ACMD <- mean(Clim$CMD[Clim$Year >= p$MeasureYear[i] &
+                              Clim$Year <= p$MeasureYear[i+1]]) - p$mCMD[1]
 
-
-      period <- paste0(p$MeasureYear[i], "-", p$MeasureYear[i+1])
-      m1 <- m[MeasureYear == p$MeasureYear[i]]
-      m2 <- m[MeasureYear == p$MeasureYear[i + 1]]
-
-
-
-      censusLength <- p$MeasureYear[i + 1] - p$MeasureYear[i]
+      period <- paste0(P$MeasureYear[i], "-", P$MeasureYear[i+1])
+      m1 <- M[MeasureYear == P$MeasureYear[i]]
+      m2 <- M[MeasureYear == P$MeasureYear[i + 1]]
+      censusLength <- P$MeasureYear[i + 1] - P$MeasureYear[i]
+      year <- round(sum(P$MeasureYear[i] + P$MeasureYear[i + 1])/2, digits = 0)
       living1 <- m1[m1$TreeNumber %in% m2$TreeNumber]
       living2 <- m2[m2$TreeNumber %in% m1$TreeNumber]
       dead <- m1[!m1$TreeNumber %in% m2$TreeNumber]
       newborn <- m2[!m2$TreeNumber %in% m1$TreeNumber]
 
       #Find observed annual changes in mortality and growth
-      observedGrowth <- sum(living2$biomass - living1$biomass)/censusLength +
-        sum(newborn$biomass)/(censusLength/2) #measured from the midpoint of census
-      observedMortality <- sum(dead$biomass)/censusLength
-      #Find unobserved growth and mortality
+      living2$origBiomass <- living1$biomass
+      living <- living2[, .(growth =  sum(biomass - origBiomass)/censusLength), by = Species] %>%
+        setkey(., Species)
+
+      newborn <- newborn[, .(newGrowth = sum(biomass)/(censusLength/2)), by = Species] %>%
+        setkey(., Species)
+      #measure from census midpoint for new seedlings
+      dead <- dead[, .(mortality = sum(biomass)/censusLength), by = Species] %>%
+        setkey(., Species)
+
+      #Find unobserved growth and mortality.
+      #Not necessary when summing by species, b/c we can't assign species for unobserved trees
+      #Unobserved growth and mortality = ~1% of observed, so climate influences on this are trivial.
+      #Leaving this in nonetheless, in case we change methods
       #Unobserved recruits U = N * R * M * L
       #N = # of trees with DBH between 10 and 15
-      N <- nrow(m2[DBH <= 15]) #TODO ask Yong if this is m2, or total
-      #R = number of recruits between two successive censuses (trees in t2 not in t1)/census length
-      R <- nrow(newborn)/censusLength
-      #M = Mortality rate, number of trees with DBH between 10 and 15 that died between two census/interval length
-      M <- nrow(dead[DBH <= 15,])/censusLength
-      #L = census interval length
+      # N <- nrow(m2[DBH <= 15]) #TODO ask Yong if this is m2, or total
+      # #R = number of recruits between two successive censuses (trees in t2 not in t1)/census length
+      # R <- nrow(newborn)/censusLength/N #I am not 100% sure if we divide by N or total stems in plot
+      # #M = Mortality rate, number of trees with DBH between 10 and 15 that died between two census/interval length
+      # M <- nrow(dead[DBH <= 15,])/censusLength/N
+      # #L = census interval length
+      #
+      # #Next calculate the median growth of the 10-15 DBH class, assume they grew to the midpoint.
+      # UnobservedR <- N * R * M * censusLength
+      # UnobservedM <- UnobservedR * median(m2$biomass[m2$DBH <= 15])/censusLength/2
+      # #assume unobserved trees died at midpoint. I think this overestimates growth and mortality
+      # totalM <- UnobservedM + observedMortality
+      # totalG <- UnobservedM + observedGrowth
 
-      #Then calculate the median growth of the 10-15 DBH class, assume they grew to the midpoint.
-      UnobservedR <- N * R * M * censusLength
-      UnobservedM <- UnobservedR * median(m2$biomass[m2$DBH <= 15])/censusLength/2
-      #assume unobserved trees died at midpoint. I think this overestimates growth and mortality
-      totalM <- UnobservedM + observedMortality
-      totalG <- UnobservedM + observedGrowth
-      out[i,] <- c(p$OrigPlotID1[1], period, totalG, totalM, totalG-totalM, ATA, ACMD)
-    }
+      changes <- merge(newborn, living, all = TRUE) %>%
+        merge(., dead, all = TRUE)
+      changes[is.na(changes)] <- 0
+      changes <- changes[, .("netGrowth" = sum(newGrowth, growth), mortality), by = Species]
+      changes <- changes[, .("species" = Species, "netBiomass" = (netGrowth - mortality), "growth" = netGrowth, mortality)]
 
-    browser()
-    return(out)
+      changes$period <- period
+      changes$ACMD <- ACMD
+      changes$ATA <- ATA
+      changes$OrigPlotID1 <- p$OrigPlotID1[1]
+      changes$year <- year
+      changes$standAge <- p$baseSA[1]
+      setcolorder(changes, c("OrigPlotID1", "period", "species", "growth",
+                             "mortality", "netBiomass", "ACMD", "ATA", "standAge"))
+
+      return(changes)
     })
 
-  browser()
+    periodSums <- data.table::rbindlist(periodSums)
+    return(periodSums)
+    })
 
+  sim$PSPmodelData <- rbindlist(plotSppChange)
+  browser()
   return(invisible(sim))
 }
 
@@ -239,7 +257,6 @@ Init <- function(sim) {
   if (!suppliedElsewhere("studyAreaLarge", sim)) {
     message("studyAreaLarge not supplied. Using random polygon in Alberta")
     sim$studyAreaLarge <- LandR::randomStudyArea(size = 1e12)
-    #This is silly
   }
 
   if (!suppliedElsewhere("PSPclimData", sim)) {
