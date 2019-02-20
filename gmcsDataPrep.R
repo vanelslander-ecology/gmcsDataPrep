@@ -65,52 +65,80 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
- #Crop points to studyArea
+
+  #stupid-catch
   if (length(P(sim)$studyPeriod) < 2) {
     stop("Please supply P(sim)$studyPeriod of length 2 or greater")
   }
 
-  tempSA <- spTransform(x = sim$studyAreaLarge, CRSobj = crs(sim$PSPgis)) %>%
+
+
+  sim$PSPmodelData <- Cache(prepModelData, studyAreaLarge = sim$studyAreaLarge,
+                                    PSPgis = sim$PSPgis,
+                                    PSPmeasure = sim$PSPmeasure,
+                                    PSPplot = sim$PSPplot,
+                                    PSPclimData = sim$PSPclimData,
+                                    useHeight = P(sim)$useHeight,
+                                    biomassModel = P(sim)$biomassModel,
+                                    studyPeriod = P(sim)$studyPeriod,
+                                    minDBH = P(sim)$minDBH,
+                            userTags = c("gmcsDataPrep", "prepModelData"))
+
+  return(invisible(sim))
+}
+
+prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
+                          PSPclimData, useHeight, biomassModel,
+                          studyPeriod, minDBH) {
+  #Crop points to studyArea
+  tempSA <- spTransform(x = studyAreaLarge, CRSobj = crs(PSPgis)) %>%
     st_as_sf(.)
-  PSP_sa <- sim$PSPgis[tempSA,] %>% #Find how to cache this. '[' did not work
+  message("Filtering PSPs to study Area...")
+  PSP_sa <- PSPgis[tempSA,] %>% #Find how to cache this. '[' did not work
     setkey(., OrigPlotID1)
+  message(paste0("There are "), nrow(PSP_sa), " PSPs in your study area")
   #Restrict climate variables to only thosee of interest.. should be param
-  PSPclimData <- sim$PSPclimData[,.("OrigPlotID1" = ID1, Year, CMD, MAT)]
+  PSPclimData <- PSPclimData[,.("OrigPlotID1" = ID1, Year, CMD, MAT)]
 
   #Filter other PSP datasets to those in study Area
-  PSPmeasure <- sim$PSPmeasure[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
-  PSPplot <- sim$PSPplot[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
+  PSPmeasure <- PSPmeasure[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
+  PSPplot <- PSPplot[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
   PSPclimData <- PSPclimData[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
 
   #length(PSPclimData)/length(PSP_sa) should always yield a whole number.
   #Filter data by study period
-  PSPmeasure <- PSPmeasure[MeasureYear > min(P(sim)$studyPeriod) & MeasureYear < max(P(sim)$studyPeriod),]
-  PSPplot <- PSPplot[MeasureYear > min(P(sim)$studyPeriod) & MeasureYear < max(P(sim)$studyPeriod),]
-  PSPclimData[Year > min(P(sim)$studyPeriod) & Year < max(P(sim)$studyPeriod),]
+  message("Filtering by study period...")
+  PSPmeasure <- PSPmeasure[MeasureYear > min(studyPeriod) &
+                             MeasureYear < max(studyPeriod),]
+  PSPplot <- PSPplot[MeasureYear > min(studyPeriod) &
+                       MeasureYear < max(studyPeriod),]
+  PSPclimData[Year > min(studyPeriod) & Year < max(studyPeriod),]
 
   #Join data (should be small enough by now)
   PSPmeasure <- PSPmeasure[PSPplot, on = c('MeasureID', 'OrigPlotID1', 'MeasureYear')]
   PSPmeasure[, c('Longitude', 'Latitude', 'Easting', 'Northing', 'Zone'):= NULL]
 
   #Filter by > 30 trees at first measurement (P) to ensure forest.
+  message("Filtering by min. 30 trees in earliest measurement")
   forestPlots <- PSPmeasure[MeasureYear == baseYear, .(measures = .N), OrigPlotID1] %>%
     .[measures >= 30,]
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% forestPlots$OrigPlotID1,]
+  PSPplot <- PSPplot[OrigPlotID1 %in% PSPmeasure$OrigPlotID1,]
+  repeats <- PSPplot[, .(measures = .N), by = OrigPlotID1]
+  message(paste0("There are "), nrow(repeats), " PSPs with min. 30 trees at earliest measurement")
 
   #Filter by 3+ repeat measures - must be last filter criteria. Removes the most.
-  repeats <- PSPmeasure[, .(measures = .N), by = .(OrigPlotID1, TreeNumber)] %>%
-    .[measures > 2,]
-  PSPmeasure <- PSPmeasure[OrigPlotID1 %in% repeats$OrigPlotID1,]
+  #Some plots share ID but have different trees so simple count of plots insufficient to find repeat measures
+  message("Filtering by at least 3 repeat measures per plot")
+  repeats <- PSPplot[, .(measures = .N), by = .(OrigPlotID1, MeasureYear)]
+  actualCount <- repeats[, .(measures = .N), by = OrigPlotID1]
+  actualCount <- actualCount[measures > 2]
+  PSPmeasure <- PSPmeasure[OrigPlotID1 %in% actualCount$OrigPlotID1,]
   PSPplot <- PSPplot[OrigPlotID1 %in% PSPmeasure$OrigPlotID1,]
-
+  message(paste0("There are "), nrow(actualCount), " PSPs with min. 3 repeat measures")
 
   #Restrict to trees > 10 DBH (P) This gets rid of some big trees. Some 15 metres tall
-  PSPmeasure <- PSPmeasure[DBH >= P(sim)$minDBH,]
-
-  #Plot data has duplicate entries that I don't believe are necessary.
-  #I remove them here in case they influence climate means
-  PSPplot <- PSPplot[, MeasureID := NULL]
-  PSPplot <- PSPplot[!duplicated(PSPplot)]
+  PSPmeasure <- PSPmeasure[DBH >= minDBH,]
 
   #Calculate Climate Means
   mCMD <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("mCMD" = mean(CMD)), OrigPlotID1]
@@ -121,39 +149,35 @@ Init <- function(sim) {
 
   #Calculate biomass
   tempOut <- pemisc::biomassCalculation(species = PSPmeasure$newSpeciesName,
-                                                   DBH = PSPmeasure$DBH,
-                                                   height = PSPmeasure$Height,
-                                                   includeHeight = P(sim)$useHeight,
-                                                   equationSource = P(sim)$biomassModel)
+                                        DBH = PSPmeasure$DBH,
+                                        height = PSPmeasure$Height,
+                                        includeHeight = useHeight,
+                                        equationSource = biomassModel)
   message("No biomass estimate possible for these species: ")
   print(tempOut$missedSpecies)
   PSPmeasure$biomass <- tempOut$biomass
   PSPmeasure <- PSPmeasure[biomass != 0]
-  #Must remove 0 before calculating mortality and growth.
-  browser()
-  plotSppChange <- Cache(FUN = lapply, unique(PSPmeasure$OrigPlotID1),
-                         function(x, m = PSPmeasure, p = PSPplot, clim = PSPclimData){
-    #sort by year. Calculate the changes in biomass, inc unobserved growth and mortality
-    m <- m[OrigPlotID1 %in% x,] #subset data by plot
-    p <- p[OrigPlotID1 %in% x,]
+  #might as well drop species with no biomass match
 
-    #p has duplicates due to plotID2. Must remove.
+  #Iterate over all plots, keeping OrigPlotID2s unique
+  TrueUniques <- PSPmeasure[, .N, by = c("OrigPlotID1", "OrigPlotID2")]
+
+  pSppChange <- lapply(1:nrow(TrueUniques), FUN = function(x, m = PSPmeasure, p = PSPplot, clim = PSPclimData){
+    x <- TrueUniques[x,]
+    #Duplicate plots arise from variable 'stand' (OrigPlotID2) that varied within the same plot.
+    #Tree No. is not unique between stands, which means the same plot can have duplicate trees.
+    #sort by year. Calculate the changes in biomass, inc. unobserved growth and mortality
+    #must match MeasureID between plot and measure data; OrigPlotID2 not present in P
+
+    m <- m[OrigPlotID1 == x$OrigPlotID1 & OrigPlotID2 == x$OrigPlotID2,] #subset data by plot
+    p <- p[MeasureID %in% m$MeasureID]
     clim <- clim[OrigPlotID1 %in% x,]
-    p <- setkey(p, MeasureYear) #Order by year
+    p <- setkey(p, MeasureYear)
     m <- setkey(m, TreeNumber)
     periods <- nrow(p) - 1
 
-    #Preallocate dataframe
-    # out <- data.frame("PlotNumber"= character(periods),
-    #                   "CensusPeriod" = character(periods),
-    #                   "annG" = numeric(periods),
-    #                   "annM" = numeric(periods),
-    #                   "annB" = numeric(periods),
-    #                   "ATA" = numeric(periods),
-    #                   "ACMD" = numeric(periods), stringsAsFactors = FALSE)
-
     #For each interval
-    periodSums <- lapply(1:periods, function(i, M = m, P = p, Clim = clim){
+    pSums <- lapply(1:periods, function(i, M = m, P = p, Clim = clim){
 
       #Calculate climate variables
       ATA <- mean(Clim$MAT[Clim$Year >= p$MeasureYear[i] &
@@ -164,7 +188,7 @@ Init <- function(sim) {
       m1 <- M[MeasureYear == P$MeasureYear[i]]
       m2 <- M[MeasureYear == P$MeasureYear[i + 1]]
       censusLength <- P$MeasureYear[i + 1] - P$MeasureYear[i]
-      year <- round(sum(P$MeasureYear[i] + P$MeasureYear[i + 1])/2, digits = 0)
+      year <-ceiling(sum(P$MeasureYear[i] + P$MeasureYear[i + 1])/2)
       living1 <- m1[m1$TreeNumber %in% m2$TreeNumber]
       living2 <- m2[m2$TreeNumber %in% m1$TreeNumber]
       dead <- m1[!m1$TreeNumber %in% m2$TreeNumber]
@@ -190,11 +214,10 @@ Init <- function(sim) {
       # N <- nrow(m2[DBH <= 15]) #TODO ask Yong if this is m2, or total
       # #R = number of recruits between two successive censuses (trees in t2 not in t1)/census length
       # R <- nrow(newborn)/censusLength/N #I am not 100% sure if we divide by N or total stems in plot
-      # #M = Mortality rate, number of trees with DBH between 10 and 15 that died between two census/interval length
+      # #M = Mortality rate, n-trees with DBH 10 -15 that died between two census/interval length
       # M <- nrow(dead[DBH <= 15,])/censusLength/N
       # #L = census interval length
-      #
-      # #Next calculate the median growth of the 10-15 DBH class, assume they grew to the midpoint.
+      # #Next calculate the median growth of the 10-15 DBH class, assume they grew to midpoint.
       # UnobservedR <- N * R * M * censusLength
       # UnobservedM <- UnobservedR * median(m2$biomass[m2$DBH <= 15])/censusLength/2
       # #assume unobserved trees died at midpoint. I think this overestimates growth and mortality
@@ -205,28 +228,29 @@ Init <- function(sim) {
         merge(., dead, all = TRUE)
       changes[is.na(changes)] <- 0
       changes <- changes[, .("netGrowth" = sum(newGrowth, growth), mortality), by = Species]
-      changes <- changes[, .("species" = Species, "netBiomass" = (netGrowth - mortality), "growth" = netGrowth, mortality)]
+      changes <- changes[, .("species" = Species,
+                             "netBiomass" = (netGrowth - mortality),
+                             "growth" = netGrowth, mortality)]
 
       changes$period <- period
       changes$ACMD <- ACMD
       changes$ATA <- ATA
       changes$OrigPlotID1 <- p$OrigPlotID1[1]
       changes$year <- year
-      changes$standAge <- p$baseSA[1]
+      changes$standAge <- p$baseSA[1] + P$baseSA[i+1] - P$baseSA[1]
+      #stand age is constant through time in the data. hmm
       setcolorder(changes, c("OrigPlotID1", "period", "species", "growth",
                              "mortality", "netBiomass", "ACMD", "ATA", "standAge"))
-
       return(changes)
     })
 
-    periodSums <- data.table::rbindlist(periodSums)
-    return(periodSums)
-    })
-
-  sim$PSPmodelData <- rbindlist(plotSppChange)
-
-  return(invisible(sim))
+    pSums <- data.table::rbindlist(pSums)
+    return(pSums)
+  })
+  PSPmodelData <- rbindlist(pSppChange)
+  return(PSPmodelData)
 }
+
 
 .inputObjects <- function(sim) {
 
@@ -247,7 +271,6 @@ Init <- function(sim) {
                                  MeasureYear = 1960, Longitude = -116.8351, Latitude = 54.40416,
                                  Zone = 11, Easting = 510704.3, Northing = 762, PlotSize = 0.1012,
                               baseYear = 1960, baseSA = 76)
-
   }
 
   if (!suppliedElsewhere("PSPgis", sim)){
