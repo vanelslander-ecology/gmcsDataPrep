@@ -15,7 +15,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd", "PredictiveEcology/pemisc@development"),
-  reqdPkgs = list('data.table', 'sf', 'sp', 'raster'),
+  reqdPkgs = list('data.table', 'sf', 'sp', 'raster', "nlme"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".useCache", "logical", FALSE, NA, NA, desc = "Should this entire module be run with caching activated? This is generally intended for data-type modules, where stochasticity and time are not relevant"),
@@ -35,7 +35,8 @@ defineModule(sim, list(
   ),
   outputObjects = bind_rows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
-    createsOutput(objectName = "LME_GM_model", objectClass = "model object", desc = NA)
+    createsOutput(objectName = "gmcsModel", objectClass = "model object", desc = NA),
+    createsOutput(objectName = "PSPmodelData", objectClass = "data.table", desc = "PSP growth mortality calculations")
   )
 ))
 
@@ -83,6 +84,8 @@ Init <- function(sim) {
                                     studyPeriod = P(sim)$studyPeriod,
                                     minDBH = P(sim)$minDBH,
                             userTags = c("gmcsDataPrep", "prepModelData"))
+
+  sim$gmcsModel <- buildGMCSModel(sim$PSPmodelData)
 
   return(invisible(sim))
 }
@@ -196,14 +199,14 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
 
       #Find observed annual changes in mortality and growth
       living2$origBiomass <- living1$biomass
-      living <- living2[, .(growth =  sum(biomass - origBiomass)/censusLength), by = Species] %>%
-        setkey(., Species)
+      living <- living2[, .(newGrowth =  sum(biomass - origBiomass)/censusLength), c("Species", "newSpeciesName")] %>%
+        setkey(., Species, newSpeciesName)
 
-      newborn <- newborn[, .(newGrowth = sum(biomass)/(censusLength/2)), by = Species] %>%
-        setkey(., Species)
+      newborn <- newborn[, .(newGrowth = sum(biomass)/(censusLength/2)), c("Species", "newSpeciesName")] %>%
+        setkey(., Species, newSpeciesName)
       #measure from census midpoint for new seedlings
-      dead <- dead[, .(mortality = sum(biomass)/censusLength), by = Species] %>%
-        setkey(., Species)
+      dead <- dead[, .(mortality = sum(biomass)/censusLength), by = c("Species", "newSpeciesName")] %>%
+        setkey(., Species, newSpeciesName)
 
       #Find unobserved growth and mortality.
       #Not necessary when summing by species, b/c we can't assign species for unobserved trees
@@ -224,13 +227,20 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
       # totalM <- UnobservedM + observedMortality
       # totalG <- UnobservedM + observedGrowth
 
-      changes <- merge(newborn, living, all = TRUE) %>%
-        merge(., dead, all = TRUE)
+      changes <- bind(newborn, living)
+
+      #to prevent error if any table is empty
+      changes$mortality <- 0
+      dead$newGrowth <- 0
+
+      changes <- bind(changes, dead)
       changes[is.na(changes)] <- 0
-      changes <- changes[, .("netGrowth" = sum(newGrowth, growth), mortality), by = Species]
+      changes <- changes[, .("netGrowth" = sum(newGrowth), "mortality" = sum(mortality)), by = c("Species", "newSpeciesName")]
       changes <- changes[, .("species" = Species,
+                             "speciesLong" = newSpeciesName,
                              "netBiomass" = (netGrowth - mortality),
-                             "growth" = netGrowth, mortality)]
+                             "growth" = netGrowth,
+                             mortality)]
 
       changes$period <- period
       changes$ACMD <- ACMD
@@ -238,9 +248,10 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
       changes$OrigPlotID1 <- p$OrigPlotID1[1]
       changes$year <- year
       changes$standAge <- p$baseSA[1] + P$baseSA[i+1] - P$baseSA[1]
+      changes$plotSize <- p$PlotSize[1]
       #stand age is constant through time in the data. hmm
-      setcolorder(changes, c("OrigPlotID1", "period", "species", "growth",
-                             "mortality", "netBiomass", "ACMD", "ATA", "standAge"))
+      setcolorder(changes, c("OrigPlotID1", "period", "species", "speciesLong", "growth",
+                             "mortality", "netBiomass", "ACMD", "ATA", "standAge", "plotSize"))
       return(changes)
     })
 
@@ -248,10 +259,22 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
     return(pSums)
   })
   PSPmodelData <- rbindlist(pSppChange)
+  PSPmodelData$species <- factor(PSPmodelData$species)
+  PSPmodelData$speciesLong <- factor(PSPmodelData$speciesLong)
   return(PSPmodelData)
 }
 
-
+buildGMCSModel <- function(modelData) {
+  browser()
+  modelData$logAge <- log(modelData$standAge)
+  #Should we remove species with few observations? I don't know.
+  modelData[, .N, by = speciesLong]
+  cor(modelData$year, modelData$standAge)
+  gmcsMod <- lmer(netBiomass ~ species + year + logAge + ACMD
+                  + (year|logAge) + (1|OrigPlotID1), data = modelData)
+  gmcsModlm <- nlme::lme(netBiomass ~ species + year + logAge + ACMD + (1|OrigPlotID1), data = modelData)
+  return(gmcsMod)
+}
 .inputObjects <- function(sim) {
 
   cacheTags <- c(currentModule(sim), "function:.inputObjects")
