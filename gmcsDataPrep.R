@@ -22,7 +22,8 @@ defineModule(sim, list(
     defineParameter("studyPeriod", "numeric", c(1958, 2011), NA, NA, desc = "The years by which to compute climate normals and subset sampling plot data. Must be a vector of at least length 2"),
     defineParameter("minDBH", "numeric", 10, 0, NA, desc = "The minimum DBH allowed. Each province uses different criteria for monitoring trees, so absence of entries < min(DBH) does not equate to absence of trees."),
     defineParameter("useHeight", "logical", TRUE, NA, NA, desc = "Should height be used to calculate biomass (in addition to DBH)"),
-    defineParameter("biomassModel", "character", "Lambert2005", NA, NA, desc =  "The model used to calculate biomass from DBH. Can be either 'Lambert2005' or 'Ung2008'")
+    defineParameter("biomassModel", "character", "Lambert2005", NA, NA, desc =  "The model used to calculate biomass from DBH. Can be either 'Lambert2005' or 'Ung2008'"),
+    defineParameter("useYear", "logical", TRUE, NA, NA, desc = "should the model include year as a predictor? If false, the mean annual temperature anomaly will be used in place of year (this is superior for projecting future biomass)")
   ),
   inputObjects = bind_rows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
@@ -85,7 +86,7 @@ Init <- function(sim) {
                                     minDBH = P(sim)$minDBH,
                             userTags = c("gmcsDataPrep", "prepModelData"))
 
-  sim$gmcsModel <- buildGMCSModel(sim$PSPmodelData)
+  sim$gmcsModel <- buildGMCSModel(sim$PSPmodelData, useYear = P(sim)$useYear)
 
   return(invisible(sim))
 }
@@ -275,24 +276,27 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
   return(PSPmodelData)
 }
 
-buildGMCSModel <- function(modelData) {
+buildGMCSModel <- function(modelData, useYear) {
   browser()
-
+  #Standardize by plotSize
+  modelData <- modelData[, growth := growth/plotSize] %>%
+    .[, mortality := mortality/plotSize] %>%
+    .[, netBiomass := netBiomass/plotSize]
   #26/02/2019 after discussion we decided not to include species in model.
-  #also decided to parameterize inclusion of ATA or year
-
-  # Longer periods may underestimate unobserved growth
-  modelData[, .N, by = sppLong]
-  # cor(modelData$year, modelData$standAge) #I don't see any correlation
-  gmcsMod <- nlme::lme(netBiomass ~ sppLong + CMDA + logAge + CMD +
-                       CMD:CMDA + logAge:CMDA + CMDA:logAge + sppLong:logAge + sppLong:CMD,
-                       random = ~1 | OrigPlotID1, data = modelData)
-  summary(gmcsMod)
-
- # gmcsModlm <- nlme::lme(netBiomass ~ species + year + logAge + ACMD + (1|OrigPlotID1), data = modelData)
-  #Yongs actual model was cbind(biomass, growth, mortality) ~ logAge + year + ACMD +
-  #(logAge|Year) + (logAge|ACMD) + (ACMD|year) -- I don't understand the age/CMD interaction.
-  #Year is eventually replaced with ACMD, ATA, and CO2 (which is basically)
+  # Decided to parameterize inclusion of ATA or year. ATA better for projecting, year is canonical
+  # Sum mortality, growth, and netBiomass by Plot and year
+  modelData <- modelData[, .("growth" = sum(growth), "mortality" = sum(mortality), "netBiomass" = sum(netBiomass),
+                             'CMD' = mean(CMD), 'CMDA' = mean(CMDA), 'AT' = mean(AT), "ATA" = mean(ATA),
+                             'standAge' = mean(standAge), 'logAge' = mean(logAge), "periodLength" = mean(periodLength),
+                             'year' = mean(year), 'plotSize' = mean(plotSize)), by = c("OrigPlotID1", "period")]
+  # model is weighted by plotSize^0.5 * periodLength
+  if (useYear) {
+    gmcsMod <- nlme::lme(netBiomass ~ logAge + CMD + year + logAge:CMD + CMD:year + year:logAge,
+                         random = ~1 | OrigPlotID1, data = modelData)
+  } else {
+    gmcsMod <- nlme::lme(netBiomass ~ logAge + CMD + ATA + logAge:CMD + CMD:ATA + ATA:logAge,
+                         random = ~1 | OrigPlotID1, data = modelData)
+  }
 
   return(gmcsMod)
 }
