@@ -93,7 +93,6 @@ Init <- function(sim) {
 prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
                           PSPclimData, useHeight, biomassModel,
                           studyPeriod, minDBH) {
-  browser()
   #Crop points to studyArea
   tempSA <- spTransform(x = studyAreaLarge, CRSobj = crs(PSPgis)) %>%
     st_as_sf(.)
@@ -191,7 +190,10 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
                              Clim$Year <= p$MeasureYear[i+1]]) - p$mCMD[1]
       ATA <- mean(Clim$MAT[Clim$Year >= p$MeasureYear[i] &
                              Clim$Year <= p$MeasureYear[i+1]]) - p$mMAT[1]
+      AT <- mean(Clim$MAT[Clim$Year >= p$MeasureYear[i] &
+                             Clim$Year <= p$MeasureYear[i+1]])
       period <- paste0(P$MeasureYear[i], "-", P$MeasureYear[i+1])
+
       m1 <- M[MeasureYear == P$MeasureYear[i]]
       m2 <- M[MeasureYear == P$MeasureYear[i + 1]]
       censusLength <- P$MeasureYear[i + 1] - P$MeasureYear[i]
@@ -203,7 +205,8 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
 
       #Find observed annual changes in mortality and growth
       living2$origBiomass <- living1$biomass
-      living <- living2[, .(newGrowth =  sum(biomass - origBiomass)/censusLength), c("Species", "newSpeciesName")] %>%
+      living <- living2[, .(newGrowth =  sum(biomass - origBiomass)/censusLength),
+                        c("Species", "newSpeciesName")] %>%
         setkey(., Species, newSpeciesName)
 
       newborn <- newborn[, .(newGrowth = sum(biomass)/(censusLength/2)), c("Species", "newSpeciesName")] %>%
@@ -248,16 +251,18 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
 
       changes$period <- period
       changes$CMD <- CMD
-      changes$ACMD <- ACMD
+      changes$CMDA <- ACMD
       changes$ATA <- ATA
       changes$OrigPlotID1 <- p$OrigPlotID1[1]
       changes$year <- year
       changes$standAge <- p$baseSA[1] + P$baseSA[i+1] - P$baseSA[1]
+      changes$logAge <- log(changes$standAge)
       changes$plotSize <- p$PlotSize[1]
       changes$periodLength <- censusLength
+      changes$AT <- AT
       #stand age is constant through time in the data. hmm
-      setcolorder(changes, c("OrigPlotID1", "period", "species", "sppLong", "growth", "mortality",
-                            "netBiomass", "CMD", "ACMD", "ATA", "standAge", "plotSize", "periodLength"))
+      setcolorder(changes, c("OrigPlotID1", "period", "species", "sppLong", "growth", "mortality", "netBiomass",
+                            "CMD", "CMDA", "AT", "ATA", "standAge", "logAge", "plotSize", "periodLength"))
       return(changes)
     })
 
@@ -272,20 +277,19 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
 
 buildGMCSModel <- function(modelData) {
   browser()
-  modelData$logAge <- log(modelData$standAge)
-  #Should we remove species with few observations? I don't know.
-  #Note: I do not know what units biomass are in. Should they be standardized by plotSize? by stems?
-  # modelData$bPerHa <- modelData$netBiomass/modelData$plotSize #Doesn't really do change much
+
+  #26/02/2019 after discussion we decided not to include species in model.
+  #also decided to parameterize inclusion of ATA or year
+
   # Longer periods may underestimate unobserved growth
   modelData[, .N, by = sppLong]
   # cor(modelData$year, modelData$standAge) #I don't see any correlation
-  gmcsMod <- nlme::lme(netBiomass ~ sppLong + year + logAge + ACMD +
-                       ACMD:year + logAge:ACMD + year:logAge + sppLong:logAge + sppLong:ACMD,
+  gmcsMod <- nlme::lme(netBiomass ~ sppLong + CMDA + logAge + CMD +
+                       CMD:CMDA + logAge:CMDA + CMDA:logAge + sppLong:logAge + sppLong:CMD,
                        random = ~1 | OrigPlotID1, data = modelData)
   summary(gmcsMod)
 
-
-  # gmcsModlm <- nlme::lme(netBiomass ~ species + year + logAge + ACMD + (1|OrigPlotID1), data = modelData)
+ # gmcsModlm <- nlme::lme(netBiomass ~ species + year + logAge + ACMD + (1|OrigPlotID1), data = modelData)
   #Yongs actual model was cbind(biomass, growth, mortality) ~ logAge + year + ACMD +
   #(logAge|Year) + (logAge|ACMD) + (ACMD|year) -- I don't understand the age/CMD interaction.
   #Year is eventually replaced with ACMD, ATA, and CO2 (which is basically)
