@@ -243,7 +243,8 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
 
       changes <- bind(changes, dead)
       changes[is.na(changes)] <- 0
-      changes <- changes[, .("netGrowth" = sum(newGrowth), "mortality" = sum(mortality)), by = c("Species", "newSpeciesName")]
+      changes <- changes[, .("netGrowth" = sum(newGrowth), "mortality" = sum(mortality)),
+                         by = c("Species", "newSpeciesName")]
       changes <- changes[, .("species" = Species,
                              "sppLong" = newSpeciesName,
                              "netBiomass" = (netGrowth - mortality),
@@ -261,6 +262,7 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
       changes$plotSize <- p$PlotSize[1]
       changes$periodLength <- censusLength
       changes$AT <- AT
+
       #stand age is constant through time in the data. hmm
       setcolorder(changes, c("OrigPlotID1", "period", "species", "sppLong", "growth", "mortality", "netBiomass",
                             "CMD", "CMDA", "AT", "ATA", "standAge", "logAge", "plotSize", "periodLength"))
@@ -278,26 +280,26 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
 
 buildGMCSModel <- function(modelData, useYear) {
   browser()
-  #Standardize by plotSize
-  modelData <- modelData[, growth := growth/plotSize] %>%
-    .[, mortality := mortality/plotSize] %>%
-    .[, netBiomass := netBiomass/plotSize]
+  #Standardize by plotSize and change units to Mg from kg
+  modelData <- modelData[, growthMg := growth/plotSize/1000] %>%
+    .[, mortalityMg := mortality/plotSize/1000] %>%
+    .[, netBiomassMg := netBiomass/plotSize/1000]
   #26/02/2019 after discussion we decided not to include species in model.
   # Decided to parameterize inclusion of ATA or year. ATA better for projecting, year is canonical
   # Sum mortality, growth, and netBiomass by Plot and year
-  modelData <- modelData[, .("growth" = sum(growth), "mortality" = sum(mortality), "netBiomass" = sum(netBiomass),
+  modelData <- modelData[, .("growth" = sum(growthMg), "mortality" = sum(mortalityMg), "netBiomass" = sum(netBiomassMg),
                              'CMD' = mean(CMD), 'CMDA' = mean(CMDA), 'AT' = mean(AT), "ATA" = mean(ATA),
                              'standAge' = mean(standAge), 'logAge' = mean(logAge), "periodLength" = mean(periodLength),
                              'year' = mean(year), 'plotSize' = mean(plotSize)), by = c("OrigPlotID1", "period")]
   # model is weighted by plotSize^0.5 * periodLength
   if (useYear) {
-    gmcsMod <- nlme::lme(netBiomass ~ logAge + CMD + year + logAge:CMD + CMD:year + year:logAge,
-                         random = ~1 | OrigPlotID1, data = modelData)
+    gmcsMod <- nlme::lme(cbind(netBiomass, growth, mortality) ~ logAge + CMD + year + logAge:CMD + CMD:year + year:logAge,
+                         random = ~1 | OrigPlotID1, data = modelData, weights = varFunc(~plotSize^0.5 * periodLength))
   } else {
-    gmcsMod <- nlme::lme(netBiomass ~ logAge + CMD + ATA + logAge:CMD + CMD:ATA + ATA:logAge,
-                         random = ~1 | OrigPlotID1, data = modelData)
+    gmcsMod <- nlme::lme(cbind(netBiomass, growth, mortality)  ~ logAge + CMD + ATA + logAge:CMD + CMD:ATA + ATA:logAge,
+                         random = ~1 | OrigPlotID1, data = modelData, weights = varFunc(~plotSize^0.5 * periodLength))
   }
-
+  browser()
   return(gmcsMod)
 }
 .inputObjects <- function(sim) {
