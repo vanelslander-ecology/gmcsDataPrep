@@ -5,7 +5,7 @@ setPaths(cachePath = "cache",
          inputPath = "inputs",
          outputPath = "outputs")
 getPaths() # shows where the 4 relevant paths are
-
+paths <- getPaths()
 times <- list(start = 0, end = 10)
 
 parameters <- list(
