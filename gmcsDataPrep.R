@@ -22,8 +22,7 @@ defineModule(sim, list(
     defineParameter("studyPeriod", "numeric", c(1958, 2011), NA, NA, desc = "The years by which to compute climate normals and subset sampling plot data. Must be a vector of at least length 2"),
     defineParameter("minDBH", "numeric", 10, 0, NA, desc = "The minimum DBH allowed. Each province uses different criteria for monitoring trees, so absence of entries < min(DBH) does not equate to absence of trees."),
     defineParameter("useHeight", "logical", TRUE, NA, NA, desc = "Should height be used to calculate biomass (in addition to DBH)"),
-    defineParameter("biomassModel", "character", "Lambert2005", NA, NA, desc =  "The model used to calculate biomass from DBH. Can be either 'Lambert2005' or 'Ung2008'"),
-    defineParameter("useYear", "logical", TRUE, NA, NA, desc = "should the model include year as a predictor? If false, the mean annual temperature anomaly will be used in place of year (this is superior for projecting future biomass)")
+    defineParameter("biomassModel", "character", "Lambert2005", NA, NA, desc =  "The model used to calculate biomass from DBH. Can be either 'Lambert2005' or 'Ung2008'")
   ),
   inputObjects = bind_rows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
@@ -51,9 +50,6 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
       # do stuff for this event
       sim <- Init(sim)
 
-      # schedule future event(s)
-      sim <- scheduleEvent(sim, P(sim)$.plotInitialTime, "gmcsDataPrep", "plot")
-      sim <- scheduleEvent(sim, P(sim)$.saveInitialTime, "gmcsDataPrep", "save")
     },
 
     warning(paste("Undefined event type: '", current(sim)[1, "eventType", with = FALSE],
@@ -85,8 +81,6 @@ Init <- function(sim) {
                                     studyPeriod = P(sim)$studyPeriod,
                                     minDBH = P(sim)$minDBH,
                             userTags = c("gmcsDataPrep", "prepModelData"))
-
-  sim$gmcsModel <- buildGMCSModel(sim$PSPmodelData, useYear = P(sim)$useYear)
 
   return(invisible(sim))
 }
@@ -275,33 +269,25 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
   PSPmodelData <- rbindlist(pSppChange)
   PSPmodelData$species <- factor(PSPmodelData$species)
   PSPmodelData$sppLong <- factor(PSPmodelData$sppLong)
-  return(PSPmodelData)
-}
 
-buildGMCSModel <- function(modelData, useYear) {
-  browser()
-  #Standardize by plotSize and change units to Mg from kg
-  modelData <- modelData[, growthMg := growth/plotSize/1000] %>%
+   #Standardize by plotSize and change units to Mg from kg. Now in Mg/ha
+  PSPmodelData <- PSPmodelData[, growthMg := growth/plotSize/1000] %>%
     .[, mortalityMg := mortality/plotSize/1000] %>%
     .[, netBiomassMg := netBiomass/plotSize/1000]
   #26/02/2019 after discussion we decided not to include species in model.
   # Decided to parameterize inclusion of ATA or year. ATA better for projecting, year is canonical
   # Sum mortality, growth, and netBiomass by Plot and year
-  modelData <- modelData[, .("growth" = sum(growthMg), "mortality" = sum(mortalityMg), "netBiomass" = sum(netBiomassMg),
+  PSPmodelData <- PSPmodelData[, .("growth" = sum(growthMg), "mortality" = sum(mortalityMg), "netBiomass" = sum(netBiomassMg),
                              'CMD' = mean(CMD), 'CMDA' = mean(CMDA), 'AT' = mean(AT), "ATA" = mean(ATA),
                              'standAge' = mean(standAge), 'logAge' = mean(logAge), "periodLength" = mean(periodLength),
                              'year' = mean(year), 'plotSize' = mean(plotSize)), by = c("OrigPlotID1", "period")]
-  # model is weighted by plotSize^0.5 * periodLength
-  if (useYear) {
-    gmcsMod <- nlme::lme(cbind(netBiomass, growth, mortality) ~ logAge + CMD + year + logAge:CMD + CMD:year + year:logAge,
-                         random = ~1 | OrigPlotID1, data = modelData, weights = varFunc(~plotSize^0.5 * periodLength))
-  } else {
-    gmcsMod <- nlme::lme(cbind(netBiomass, growth, mortality)  ~ logAge + CMD + ATA + logAge:CMD + CMD:ATA + ATA:logAge,
-                         random = ~1 | OrigPlotID1, data = modelData, weights = varFunc(~plotSize^0.5 * periodLength))
-  }
-  browser()
-  return(gmcsMod)
+
+  # gmcsMod <- nlme::lme(cbind(netBiomass, growth, mortality)  ~ logAge + CMD + ATA + logAge:CMD + CMD:ATA + ATA:logAge,
+  #                      random = ~1 | OrigPlotID1, data = modelData, weights = varFunc(~plotSize^0.5 * periodLength))
+
+  return(PSPmodelData)
 }
+
 .inputObjects <- function(sim) {
 
   cacheTags <- c(currentModule(sim), "function:.inputObjects")
