@@ -35,8 +35,11 @@ defineModule(sim, list(
   ),
   outputObjects = bind_rows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
-    createsOutput(objectName = "gmcsModel", objectClass = "model object", desc = NA),
-    createsOutput(objectName = "PSPmodelData", objectClass = "data.table", desc = "PSP growth mortality calculations")
+    createsOutput(objectName = "PSPmodelData", objectClass = "data.table", desc = "PSP growth mortality calculations"),
+    createsOutput(objectName = "ATAstack", objectClass = "RasterStack", desc = "projected annual mean temperature anomalies (<mean annual temperature at time-x> - <mean annual temperature of whole studyPeriod)"),
+    createsOutput(objectName = "CMDstack", objectClass = "RasterStack", desc = "projected  mean climate moisture deficit"),
+    createsOutput(objectName = 'CMD', objectClass = "RasterLayer", desc = "climate moisture deficit at time(sim), resampled using rasterToMatch"),
+    createsOutput(objectName = 'ATA', objectClass = "RasterLayer", desc = "annual temperature anomaly, resampled using rasterToMatch")
   )
 ))
 
