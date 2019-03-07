@@ -31,13 +31,13 @@ defineModule(sim, list(
     expectsInput(objectName = 'PSPgis', objectClass = 'data.table', desc = "PSP plot data as sf object", sourceURL = NA),
     expectsInput(objectName = 'studyAreaLarge', objectClass = 'SpatialPolygonsDataFrame', desc = "this area will be used to subset PSP plots before building the statistical model.", sourceURL = NA),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table", desc = "climate data for each PSP",
-                 sourceURL = "https://drive.google.com/open?id=1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG")
+                 sourceURL = "https://drive.google.com/open?id=1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG"),
+    expectsInput(objectName = "ATAstack", objectClass = "RasterStack", desc = "annual projected mean annual temperature anomalies", sourceURL = "https://drive.google.com/open?id=1mNdLnQv09N0mf5e5v8D8rIfsnLovpdyE"),
+    expectsInput(objectName = "CMDstack", objectClass = "RasterStack", desc = "annual projected mean climate moisture deficit", sourceURL = "https://drive.google.com/open?id=1qt-9vNf5fpcprojD9Y9nhuh7oPfW235m")
   ),
   outputObjects = bind_rows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
     createsOutput(objectName = "PSPmodelData", objectClass = "data.table", desc = "PSP growth mortality calculations"),
-    createsOutput(objectName = "ATAstack", objectClass = "RasterStack", desc = "projected annual mean temperature anomalies (<mean annual temperature at time-x> - <mean annual temperature of whole studyPeriod)"),
-    createsOutput(objectName = "CMDstack", objectClass = "RasterStack", desc = "projected  mean climate moisture deficit"),
     createsOutput(objectName = 'CMD', objectClass = "RasterLayer", desc = "climate moisture deficit at time(sim), resampled using rasterToMatch"),
     createsOutput(objectName = 'ATA', objectClass = "RasterLayer", desc = "annual temperature anomaly, resampled using rasterToMatch")
   )
@@ -327,6 +327,26 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
                                  url = extractURL("PSPclimData"),
                                  destinationPath = dPath,
                                  fun = "data.table::fread")
+  }
+
+  if (!suppliedElsewhere("ATAstack", sim)) {
+    #These should not be called using prepInputs -- each stack has 90 rasters and prepInputs isn't ready for stacks
+    #they need to be subset, resampled, and reprojected every year
+    sim$ATAstack <- prepInputs(targetFile = "CanATA_2011-2100.gri",
+                               url = extractURL("ATAstack"),
+                               destinationPath = dPath,
+                               fun = "raster::stack",
+                               studyArea = sim$studyAreaLarge) #use studyAreaLarge due to 10x10 km pixel size
+  }
+
+  if (!suppliedElsewhere("CMDstack", sim)) {
+    #These should not be called with RasterToMatch -- each stack has 90 rasters and prepInputs isn't ready for stacks
+    #they need to be subset, resampled, and reprojected every year
+    sim$CMDstack <- prepInputs(targetFile = "CanCMD_2011-2100.grd",
+                               url = extractURL("CMDstack"),
+                               destinationPath = dPath,
+                               fun = "raster::stack",
+                               studyArea = sim$studyAreaLarge)
   }
 
   return(invisible(sim))
