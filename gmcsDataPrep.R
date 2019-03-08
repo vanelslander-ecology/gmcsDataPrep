@@ -29,7 +29,7 @@ defineModule(sim, list(
     expectsInput(objectName = 'PSPmeasure', objectClass = 'data.table', desc = "PSP data for individual measures", sourceURL = NA),
     expectsInput(objectName = 'PSPplot', objectClass = 'data.table', desc = "PSP data for each plot", sourceURL = NA),
     expectsInput(objectName = 'PSPgis', objectClass = 'data.table', desc = "PSP plot data as sf object", sourceURL = NA),
-    expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame", desc = "this area will be used to crop climate rasters", sourceURL = NA)
+    expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame", desc = "this area will be used to crop climate rasters", sourceURL = NA),
     expectsInput(objectName = 'studyAreaLarge', objectClass = 'SpatialPolygonsDataFrame', desc = "this area will be used to subset PSP plots before building the statistical model.", sourceURL = NA),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table", desc = "climate data for each PSP",
                  sourceURL = "https://drive.google.com/open?id=1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG"),
@@ -58,9 +58,11 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
     },
 
     prepRasters = {
-      sim$ATA <- resampleStacks(stack = sim$ATAstack, time = time(sim), isATA = TRUE)
-      sim$CMD <- resampleStacks(stack = sim$CMDstack, time = time(sim))
-      sim <- scheduleEvent(sim, time(sim) + 1, eventTYpe = "prepRasters")
+      sim$ATA <- resampleStacks(stack = sim$ATAstack, time = time(sim), isATA = TRUE,
+                                studyArea = sim$studyArea, rtm = sim$rasterToMatch)
+      sim$CMD <- resampleStacks(stack = sim$CMDstack, time = time(sim),
+                                studyArea = sim$studyArea, rtm = sim$rasterToMatch)
+      sim <- scheduleEvent(sim, time(sim) + 1, eventType = "prepRasters")
     },
 
     warning(paste("Undefined event type: '", current(sim)[1, "eventType", with = FALSE],
@@ -297,17 +299,18 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
   return(PSPmodelData)
 }
 
-resampleStacks <- function(stack, time, isATA = FALSE) {
+resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
   browser()
   currentRas <- grep(pattern = time, x = names(stack))
   if (length(currentRas) > 0) {
     yearRas <- stack[[currentRas]]
-    if (isATA = TRUE) {
+    if (isATA == TRUE) {
+      #ATA was stored as an integer
       yearRas[] <- yearRas[]/1000
     }
     yearRasResampled <- postProcess(yearRas,
-                           rasterToMatch = sim$rasterToMatch,
-                           studyArea = sim$studyArea,
+                           rasterToMatch = rtm,
+                           studyArea = studyArea,
                            filename2 = NULL)
   } else {
     stop("Climate dataset is limited to 2011-2100. Please limit sim times accordingly")
