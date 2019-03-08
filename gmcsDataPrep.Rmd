@@ -7,10 +7,10 @@ output: pdf_document
 
 # Overview
 
-Provide an overview of what the module does / how to use the module.
+This module uses climate data and permanent sampling plot data to prepare a multivariate mixed effect model of growth, mortality, and net biomass change. The PSP data is supplied by the module PSP_clean. The PSP_clean data includes BC, Alberta, Saskatchewan, and the first NFI PSP measurement, which is mainly western Canada. However, because the module requires repeat measurements, this module should only be used with a studyAreaLarge that covers at a minimum part of BC, Alberta, or Saskatchewan. 
 
-Module documentation should be written so that others can use your module.
-This is a template for module documentation, and should be changed to reflect your module.
+The module does not estimate unobserved growth and mortality (trees that grew and died between census measurements). The formulas are included as comments. It is not advisable to estimate the unobserved mortality and growth of species, and although the multivariate model does not have a species term, we intended for the model to one day include species. Consequently, we exclude unobserved mortality and growth (estimates are usually 0.5-1.5% of total growth and mortality, so no biggie). 
+
 
 ## R Markdown
 

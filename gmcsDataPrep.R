@@ -29,11 +29,13 @@ defineModule(sim, list(
     expectsInput(objectName = 'PSPmeasure', objectClass = 'data.table', desc = "PSP data for individual measures", sourceURL = NA),
     expectsInput(objectName = 'PSPplot', objectClass = 'data.table', desc = "PSP data for each plot", sourceURL = NA),
     expectsInput(objectName = 'PSPgis', objectClass = 'data.table', desc = "PSP plot data as sf object", sourceURL = NA),
+    expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame", desc = "this area will be used to crop climate rasters", sourceURL = NA)
     expectsInput(objectName = 'studyAreaLarge', objectClass = 'SpatialPolygonsDataFrame', desc = "this area will be used to subset PSP plots before building the statistical model.", sourceURL = NA),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table", desc = "climate data for each PSP",
                  sourceURL = "https://drive.google.com/open?id=1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG"),
     expectsInput(objectName = "ATAstack", objectClass = "RasterStack", desc = "annual projected mean annual temperature anomalies", sourceURL = "https://drive.google.com/open?id=1mNdLnQv09N0mf5e5v8D8rIfsnLovpdyE"),
-    expectsInput(objectName = "CMDstack", objectClass = "RasterStack", desc = "annual projected mean climate moisture deficit", sourceURL = "https://drive.google.com/open?id=1qt-9vNf5fpcprojD9Y9nhuh7oPfW235m")
+    expectsInput(objectName = "CMDstack", objectClass = "RasterStack", desc = "annual projected mean climate moisture deficit", sourceURL = "https://drive.google.com/open?id=1qt-9vNf5fpcprojD9Y9nhuh7oPfW235m"),
+    expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer", desc = "template raster for ATA and CMD")
   ),
   outputObjects = bind_rows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
@@ -52,7 +54,13 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
     init = {
       # do stuff for this event
       sim <- Init(sim)
+      sim <- scheduleEvent(sim, time(sim), eventType = "prepRasters")
+    },
 
+    prepRasters = {
+      sim$ATA <- resampleStacks(stack = sim$ATAstack, time = time(sim), isATA = TRUE)
+      sim$CMD <- resampleStacks(stack = sim$CMDstack, time = time(sim))
+      sim <- scheduleEvent(sim, time(sim) + 1, eventTYpe = "prepRasters")
     },
 
     warning(paste("Undefined event type: '", current(sim)[1, "eventType", with = FALSE],
@@ -71,8 +79,6 @@ Init <- function(sim) {
   if (length(P(sim)$studyPeriod) < 2) {
     stop("Please supply P(sim)$studyPeriod of length 2 or greater")
   }
-
-
 
   sim$PSPmodelData <- Cache(prepModelData, studyAreaLarge = sim$studyAreaLarge,
                                     PSPgis = sim$PSPgis,
@@ -291,6 +297,26 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
   return(PSPmodelData)
 }
 
+resampleStacks <- function(stack, time, isATA = FALSE) {
+  browser()
+  currentRas <- grep(pattern = time, x = names(stack))
+  if (length(currentRas) > 0) {
+    yearRas <- stack[[currentRas]]
+    if (isATA = TRUE) {
+      yearRas[] <- yearRas[]/1000
+    }
+    yearRasResampled <- postProcess(yearRas,
+                           rasterToMatch = sim$rasterToMatch,
+                           studyArea = sim$studyArea,
+                           filename2 = NULL)
+  } else {
+    stop("Climate dataset is limited to 2011-2100. Please limit sim times accordingly")
+  }
+
+  return(yearRasResampled)
+}
+
+
 .inputObjects <- function(sim) {
 
   cacheTags <- c(currentModule(sim), "function:.inputObjects")
@@ -317,9 +343,14 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
                            crs = "+proj=longlat +datum=WGS84")
   }
 
+  if (!suppliedElsewhere("studyArea", sim)) {
+    message("studyArea not supplied. Using a random area in Alberta")
+    sim$studyArea <- randomStudyArea(size = 1e6)
+  }
+
   if (!suppliedElsewhere("studyAreaLarge", sim)) {
-    message("studyAreaLarge not supplied. Using random polygon in Alberta")
-    sim$studyAreaLarge <- LandR::randomStudyArea(size = 1e12)
+    message("studyAreaLarge not supplied. Using study area. You may want to supply studyAreaLarge if your studyArea is sub-provincial due to sample size issues with the multivariate model")
+    sim$studyAreaLarge <- sim$studyArea
   }
 
   if (!suppliedElsewhere("PSPclimData", sim)) {
@@ -336,19 +367,25 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
                                url = extractURL("ATAstack"),
                                destinationPath = dPath,
                                fun = "raster::stack",
-                               studyArea = sim$studyAreaLarge) #use studyAreaLarge due to 10x10 km pixel size
+                               overwrite = TRUE,
+                               useCache = TRUE)
   }
 
   if (!suppliedElsewhere("CMDstack", sim)) {
     #These should not be called with RasterToMatch -- each stack has 90 rasters and prepInputs isn't ready for stacks
     #they need to be subset, resampled, and reprojected every year
-    sim$CMDstack <- prepInputs(targetFile = "CanCMD_2011-2100.grd",
+    sim$CMDstack <- prepInputs(targetFile = "CanCMD_2011-2100.gri",
                                url = extractURL("CMDstack"),
                                destinationPath = dPath,
                                fun = "raster::stack",
-                               studyArea = sim$studyAreaLarge)
+                               overwrite = TRUE,
+                               useCache = TRUE)
   }
 
+  if (!suppliedElsewhere("rasterToMatch", sim)) {
+    message("rasterToMatch not supplied. Generating from LCC2005")
+    sim$rasterToMatch <- LandR::prepInputsLCC(studyArea = studyAreaLarge, filename2 = NULL, destinationPath = dPath)
+  }
   return(invisible(sim))
 }
 ### add additional events as needed by copy/pasting from above
