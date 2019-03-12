@@ -41,7 +41,8 @@ defineModule(sim, list(
     #createsOutput("objectName", "objectClass", "output object description", ...),
     createsOutput(objectName = "PSPmodelData", objectClass = "data.table", desc = "PSP growth mortality calculations"),
     createsOutput(objectName = 'CMD', objectClass = "RasterLayer", desc = "climate moisture deficit at time(sim), resampled using rasterToMatch"),
-    createsOutput(objectName = 'ATA', objectClass = "RasterLayer", desc = "annual temperature anomaly, resampled using rasterToMatch")
+    createsOutput(objectName = 'ATA', objectClass = "RasterLayer", desc = "annual temperature anomaly, resampled using rasterToMatch"),
+    createsOutput(objectName = "gmcsModel", objectClass = "ModelObject?", desc = "Multivariate mixed effect model with mortality, growth, and netbiomass change as dependent variables, and log(age), ATA, and CMD as predictors")
   )
 ))
 
@@ -92,6 +93,8 @@ Init <- function(sim) {
                                     studyPeriod = P(sim)$studyPeriod,
                                     minDBH = P(sim)$minDBH,
                             userTags = c("gmcsDataPrep", "prepModelData"))
+
+  sim$gmcsModel <- gmcsModelBuild(sim$PSPmodelData)
 
   return(invisible(sim))
 }
@@ -288,17 +291,22 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
   #26/02/2019 after discussion we decided not to include species in model.
   # Decided to parameterize inclusion of ATA or year. ATA better for projecting, year is canonical
   # Sum mortality, growth, and netBiomass by Plot and year
-  PSPmodelData <- PSPmodelData[, .("growth" = sum(growthMg), "mortality" = sum(mortalityMg), "netBiomass" = sum(netBiomassMg),
-                             'CMD' = mean(CMD), 'CMDA' = mean(CMDA), 'AT' = mean(AT), "ATA" = mean(ATA),
-                             'standAge' = mean(standAge), 'logAge' = mean(logAge), "periodLength" = mean(periodLength),
-                             'year' = mean(year), 'plotSize' = mean(plotSize)), by = c("OrigPlotID1", "period")]
-
-  # gmcsMod <- nlme::lme(cbind(netBiomass, growth, mortality)  ~ logAge + CMD + ATA + logAge:CMD + CMD:ATA + ATA:logAge,
-  #                      random = ~1 | OrigPlotID1, data = modelData, weights = varFunc(~plotSize^0.5 * periodLength))
+  PSPmodelData <- PSPmodelData[, .("growth" = sum(growthMg), "mortality" = sum(mortalityMg),
+                                   "netBiomass" = sum(netBiomassMg), 'CMD' = mean(CMD), 'CMDA' = mean(CMDA),
+                                   'AT' = mean(AT), "ATA" = mean(ATA), 'standAge' = mean(standAge),
+                                   'logAge' = mean(logAge), "periodLength" = mean(periodLength),
+                                   'year' = mean(year), 'plotSize' = mean(plotSize)), by = c("OrigPlotID1", "period")]
 
   return(PSPmodelData)
 }
 
+gmcsModelBuild <- function(PSPmodelData) {
+  gmcsModel <- nlme::lme(cbind(netBiomass, growth, mortality) ~ logAge + CMD + ATA + logAge:CMD +
+                         CMD:ATA + ATA:logAge, random = ~1 | OrigPlotID1, data = PSPmodelData,
+                       weights = varFunc(~plotSize^0.5 * periodLength))
+  return(gmcsModel)
+
+}
 resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
   browser()
   currentRas <- grep(pattern = time, x = names(stack))
@@ -370,6 +378,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
                                url = extractURL("ATAstack"),
                                destinationPath = dPath,
                                fun = "raster::stack",
+                               studyArea = sim$studyAreaLarge,
                                overwrite = TRUE,
                                useCache = TRUE)
   }
@@ -381,6 +390,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
                                url = extractURL("CMDstack"),
                                destinationPath = dPath,
                                fun = "raster::stack",
+                               studyArea = sim$studyAreaLarge,
                                overwrite = TRUE,
                                useCache = TRUE)
   }
