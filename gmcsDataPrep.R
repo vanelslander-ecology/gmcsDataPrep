@@ -301,14 +301,19 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
 }
 
 gmcsModelBuild <- function(PSPmodelData) {
-  gmcsModel <- nlme::lme(cbind(netBiomass, growth, mortality) ~ logAge + CMD + ATA + logAge:CMD +
-                         CMD:ATA + ATA:logAge, random = ~1 | OrigPlotID1, data = PSPmodelData,
+
+  #Center data on the mean
+  PSPmodelData$mLogAge <- PSPmodelData$logAge - mean(PSPmodelData$logAge)
+  PSPmodelData$mCMD <- PSPmodelData$CMD - mean(PSPmodelData$CMD)
+  PSPmodelData$mATA <- PSPmodelData$ATA - mean(PSPmodelData$ATA)
+  gmcsModel <- nlme::lme(cbind(netBiomass, growth, mortality) ~ mLogAge + mCMD + mATA + mLogAge:mCMD +
+                         mCMD:mATA + mATA:mLogAge, random = ~1 | OrigPlotID1, data = PSPmodelData,
                        weights = varFunc(~plotSize^0.5 * periodLength))
   return(gmcsModel)
 
 }
 resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
-  browser()
+
   currentRas <- grep(pattern = time, x = names(stack))
   if (length(currentRas) > 0) {
     yearRas <- stack[[currentRas]]
@@ -380,7 +385,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
                                fun = "raster::stack",
                                studyArea = sim$studyAreaLarge,
                                overwrite = TRUE,
-                               useCache = TRUE)
+                               useCache = TRUE,
+                               dataType = "INT4S") #if a pixel is 10 degrees above average, needs 4S
   }
 
   if (!suppliedElsewhere("CMDstack", sim)) {
@@ -392,7 +398,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
                                fun = "raster::stack",
                                studyArea = sim$studyAreaLarge,
                                overwrite = TRUE,
-                               useCache = TRUE)
+                               useCache = TRUE,
+                               dataType = "INT2U")
   }
 
   if (!suppliedElsewhere("rasterToMatch", sim)) {
