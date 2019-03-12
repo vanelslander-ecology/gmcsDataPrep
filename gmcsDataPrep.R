@@ -19,7 +19,7 @@ defineModule(sim, list(
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".useCache", "logical", FALSE, NA, NA, desc = "Should this entire module be run with caching activated? This is generally intended for data-type modules, where stochasticity and time are not relevant"),
-    defineParameter("studyPeriod", "numeric", c(1958, 2011), NA, NA, desc = "The years by which to compute climate normals and subset sampling plot data. Must be a vector of at least length 2"),
+    defineParameter("PSPperiod", "numeric", c(1958, 2011), NA, NA, desc = "The years by which to compute climate normals and subset sampling plot data. Must be a vector of at least length 2"),
     defineParameter("minDBH", "numeric", 10, 0, NA, desc = "The minimum DBH allowed. Each province uses different criteria for monitoring trees, so absence of entries < min(DBH) does not equate to absence of trees."),
     defineParameter("useHeight", "logical", TRUE, NA, NA, desc = "Should height be used to calculate biomass (in addition to DBH)"),
     defineParameter("biomassModel", "character", "Lambert2005", NA, NA, desc =  "The model used to calculate biomass from DBH. Can be either 'Lambert2005' or 'Ung2008'")
@@ -79,8 +79,8 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 Init <- function(sim) {
 
   #stupid-catch
-  if (length(P(sim)$studyPeriod) < 2) {
-    stop("Please supply P(sim)$studyPeriod of length 2 or greater")
+  if (length(P(sim)$PSPperiod) < 2) {
+    stop("Please supply P(sim)$PSPperiod of length 2 or greater")
   }
 
   sim$PSPmodelData <- Cache(prepModelData, studyAreaLarge = sim$studyAreaLarge,
@@ -90,7 +90,7 @@ Init <- function(sim) {
                                     PSPclimData = sim$PSPclimData,
                                     useHeight = P(sim)$useHeight,
                                     biomassModel = P(sim)$biomassModel,
-                                    studyPeriod = P(sim)$studyPeriod,
+                                    PSPperiod = P(sim)$PSPperiod,
                                     minDBH = P(sim)$minDBH,
                             userTags = c("gmcsDataPrep", "prepModelData"))
 
@@ -101,7 +101,7 @@ Init <- function(sim) {
 
 prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
                           PSPclimData, useHeight, biomassModel,
-                          studyPeriod, minDBH) {
+                          PSPperiod, minDBH) {
   #Crop points to studyArea
   tempSA <- spTransform(x = studyAreaLarge, CRSobj = crs(PSPgis)) %>%
     st_as_sf(.)
@@ -120,11 +120,11 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
   #length(PSPclimData)/length(PSP_sa) should always yield a whole number.
   #Filter data by study period
   message("Filtering by study period...")
-  PSPmeasure <- PSPmeasure[MeasureYear > min(studyPeriod) &
-                             MeasureYear < max(studyPeriod),]
-  PSPplot <- PSPplot[MeasureYear > min(studyPeriod) &
-                       MeasureYear < max(studyPeriod),]
-  PSPclimData[Year > min(studyPeriod) & Year < max(studyPeriod),]
+  PSPmeasure <- PSPmeasure[MeasureYear > min(PSPperiod) &
+                             MeasureYear < max(PSPperiod),]
+  PSPplot <- PSPplot[MeasureYear > min(PSPperiod) &
+                       MeasureYear < max(PSPperiod),]
+  PSPclimData[Year > min(PSPperiod) & Year < max(PSPperiod),]
 
   #Join data (should be small enough by now)
   PSPmeasure <- PSPmeasure[PSPplot, on = c('MeasureID', 'OrigPlotID1', 'MeasureYear')]
@@ -386,7 +386,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
                                studyArea = sim$studyAreaLarge,
                                overwrite = TRUE,
                                useCache = TRUE,
-                               dataType = "INT4S") #if a pixel is 10 degrees above average, needs 4S
+                               useSAcrs = TRUE
+                               ) #if a pixel is 10 degrees above average, needs 4S
   }
 
   if (!suppliedElsewhere("CMDstack", sim)) {
@@ -399,7 +400,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
                                studyArea = sim$studyAreaLarge,
                                overwrite = TRUE,
                                useCache = TRUE,
-                               dataType = "INT2U")
+                               useSAcrs = TRUE
+                               )
   }
 
   if (!suppliedElsewhere("rasterToMatch", sim)) {

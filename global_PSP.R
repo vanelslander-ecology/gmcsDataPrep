@@ -14,13 +14,16 @@ parameters <- list(
   #module1 = list(param1 = value1, param2 = value2),
   #module2 = list(param1 = value1, param2 = value2)
 )
+rasterToMatch <- raster("C:/Ian/Campbell/RIA/Land-R/rasterToMatch.tif")
 ecoDistricts <- shapefile("C:/Ian/Git/scfm/modules/scfmLandcoverInit/data/ecodistricts_shp/Ecodistricts/ecodistricts.shp")
-studyArea <- ecoDistricts[ecoDistricts$DISTRICT_I %in% c(387, 390, 372),] #3 small contiguous ecodistricts in the RIA
-
+studyArea <- ecoDistricts[ecoDistricts$DISTRICT_I %in% c(387, 390, 372),] %>%
+  spTransform(., CRSobj = crs(rasterToMatch)) #3 small contiguous ecodistricts in the RIA
+studyAreaLarge <- shapefile("C:/Ian/Campbell/RIA/GIS/RIA_StudyArea/RIA_StudyArea_Valid.shp") %>%
+  spTransform(., CRSobj = crs(rasterToMatch))
 
 modules <- list("gmcsDataPrep", "PSP_Clean")
-objects <- list("studyAreaLarge" = shapefile("C:/Ian/Campbell/RIA/GIS/RIA_StudyArea/RIA_StudyArea_Valid.shp"),
-                "rasterToMatch" = raster("C:/Ian/Campbell/RIA/Land-R/rasterToMatch.tif"),
+objects <- list("studyAreaLarge" = studyAreaLarge,
+                "rasterToMatch" = rasterToMatch,
                 "studyArea" = studyArea)
 
 mySim <- simInit(times = times, params = parameters, modules = modules,
