@@ -322,11 +322,16 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
       yearRas[] <- yearRas[]/1000
     }
     yearRasResampled <- postProcess(yearRas,
-                           rasterToMatch = rtm,
-                           studyArea = studyArea,
-                           filename2 = NULL)
+                                    rasterToMatch = rtm,
+                                    studyArea = studyArea,
+                                    filename2 = NULL)
   } else {
-    stop("Climate dataset is limited to 2011-2100. Please limit sim times accordingly")
+    yearRas <- raster(stack[[1]]) #Make a NULL raster for no climate effect
+    yearRas[] <- 0
+    yearRasResampled <- postProcess(yearRas,
+                                    rasterToMatch = rtm,
+                                    studyArea = studyArea,
+                                    filename2 = NULL)
   }
 
   return(yearRasResampled)
@@ -379,28 +384,23 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
   if (!suppliedElsewhere("ATAstack", sim)) {
     #These should not be called using prepInputs -- each stack has 90 rasters and prepInputs isn't ready for stacks
     #they need to be subset, resampled, and reprojected every year
-    sim$ATAstack <- prepInputs(targetFile = "CanATA_2011-2100.gri",
+    sim$ATAstack <- prepInputs(targetFile = "CanATA_2011-2100.zip",
                                url = extractURL("ATAstack"),
                                destinationPath = dPath,
-                               fun = "raster::stack",
-                               studyArea = sim$studyAreaLarge,
                                overwrite = TRUE,
-                               useCache = TRUE,
-                               useSAcrs = TRUE
+                               useCache = TRUE
                                ) #if a pixel is 10 degrees above average, needs 4S
   }
 
   if (!suppliedElsewhere("CMDstack", sim)) {
     #These should not be called with RasterToMatch -- each stack has 90 rasters and prepInputs isn't ready for stacks
     #they need to be subset, resampled, and reprojected every year
-    sim$CMDstack <- prepInputs(targetFile = "CanCMD_2011-2100.gri",
+    sim$CMDstack <- prepInputs(targetFile = "CanCMD_2011-2100.zip",
                                url = extractURL("CMDstack"),
                                destinationPath = dPath,
                                fun = "raster::stack",
-                               studyArea = sim$studyAreaLarge,
                                overwrite = TRUE,
-                               useCache = TRUE,
-                               useSAcrs = TRUE
+                               useCache = TRUE
                                )
   }
 
