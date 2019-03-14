@@ -384,7 +384,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
     sim$ATAstack <- prepInputs(targetFile = "CanATA_2011-2100.gri",
                                url = extractURL("ATAstack"),
                                destinationPath = dPath,
-                               fun = "raster",
+                               fun = "raster::stack",
                                overwrite = TRUE,
                                useCache = TRUE
                                ) #if a pixel is 10 degrees above average, needs 4S
@@ -396,7 +396,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
     sim$CMDstack <- prepInputs(targetFile = "CanCMD_2011-2100.gri",
                                url = extractURL("CMDstack"),
                                destinationPath = dPath,
-                               fun = "raster",
+                               fun = "raster::stack",
                                overwrite = TRUE,
                                useCache = TRUE
                                )
