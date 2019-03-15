@@ -327,7 +327,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
                                     filename2 = NULL,
                               userTags = c("yearRasResampled", paste(time(sim))))
   } else {
-    message(blue(paste0("no climate effect for year ", time(sim))))
+    message(blue(paste0("no climate effect for year ", time)))
     yearRas <- raster(rasterToMatch) #Make a NULL raster for no climate effect
     yearRas[] <- 0
   }
