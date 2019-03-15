@@ -55,7 +55,7 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
     init = {
       # do stuff for this event
       sim <- Init(sim)
-      sim <- scheduleEvent(sim, times$start, eventType = "prepRasters", eventPriority = 1)
+      sim <- scheduleEvent(sim, start(sim), eventType = "prepRasters", eventPriority = 1)
     },
 
     prepRasters = {
