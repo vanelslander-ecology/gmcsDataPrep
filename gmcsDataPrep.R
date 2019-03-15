@@ -55,7 +55,7 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
     init = {
       # do stuff for this event
       sim <- Init(sim)
-      sim <- scheduleEvent(sim, time(sim), eventType = "prepRasters")
+      sim <- scheduleEvent(sim, times$start, eventType = "prepRasters", eventPriority = 1)
     },
 
     prepRasters = {
@@ -63,7 +63,7 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
                                 studyArea = sim$studyArea, rtm = sim$rasterToMatch)
       sim$CMD <- resampleStacks(stack = sim$CMDstack, time = time(sim),
                                 studyArea = sim$studyArea, rtm = sim$rasterToMatch)
-      sim <- scheduleEvent(sim, time(sim) + 1, eventType = "prepRasters")
+      sim <- scheduleEvent(sim, time(sim) + 1, eventType = "prepRasters", eventPriority = 1)
     },
 
     warning(paste("Undefined event type: '", current(sim)[1, "eventType", with = FALSE],
@@ -321,10 +321,11 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
       #ATA was stored as an integer
       yearRas[] <- yearRas[]/1000
     }
-    yearRasResampled <- postProcess(yearRas,
+    yearRasResampled <- Cache(postProcess, yearRas,
                                     rasterToMatch = rtm,
                                     studyArea = studyArea,
-                                    filename2 = NULL)
+                                    filename2 = NULL,
+                              userTags = c("yearRasResampled", paste(time(sim))))
   } else {
     message(blue(paste0("no climate effect for year ", time(sim))))
     yearRas <- raster(rasterToMatch) #Make a NULL raster for no climate effect
