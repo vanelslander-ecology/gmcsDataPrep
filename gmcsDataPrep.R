@@ -26,23 +26,41 @@ defineModule(sim, list(
   ),
   inputObjects = bind_rows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
-    expectsInput(objectName = 'PSPmeasure', objectClass = 'data.table', desc = "PSP data for individual measures", sourceURL = NA),
-    expectsInput(objectName = 'PSPplot', objectClass = 'data.table', desc = "PSP data for each plot", sourceURL = NA),
-    expectsInput(objectName = 'PSPgis', objectClass = 'data.table', desc = "PSP plot data as sf object", sourceURL = NA),
-    expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame", desc = "this area will be used to crop climate rasters", sourceURL = NA),
-    expectsInput(objectName = 'studyAreaLarge', objectClass = 'SpatialPolygonsDataFrame', desc = "this area will be used to subset PSP plots before building the statistical model.", sourceURL = NA),
-    expectsInput(objectName = "PSPclimData", objectClass = "data.table", desc = "climate data for each PSP",
+    expectsInput(objectName = 'PSPmeasure', objectClass = 'data.table',
+                 desc = "PSP data for individual measures", sourceURL = NA),
+    expectsInput(objectName = 'PSPplot', objectClass = 'data.table',
+                 desc = "PSP data for each plot", sourceURL = NA),
+    expectsInput(objectName = 'PSPgis', objectClass = 'data.table',
+                 desc = "PSP plot data as sf object", sourceURL = NA),
+    expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame",
+                 desc = "this area will be used to crop climate rasters", sourceURL = NA),
+    expectsInput(objectName = 'studyAreaLarge', objectClass = 'SpatialPolygonsDataFrame',
+                 desc = "this area will be used to subset PSP plots before building the statistical model.",
+                 sourceURL = NA),
+    expectsInput(objectName = "PSPclimData", objectClass = "data.table",
+                 desc = "climate data for each PSP",
                  sourceURL = "https://drive.google.com/open?id=1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG"),
-    expectsInput(objectName = "ATAstack", objectClass = "RasterStack", desc = "annual projected mean annual temperature anomalies", sourceURL = "https://drive.google.com/open?id=1mNdLnQv09N0mf5e5v8D8rIfsnLovpdyE"),
-    expectsInput(objectName = "CMDstack", objectClass = "RasterStack", desc = "annual projected mean climate moisture deficit", sourceURL = "https://drive.google.com/open?id=1qt-9vNf5fpcprojD9Y9nhuh7oPfW235m"),
-    expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer", desc = "template raster for ATA and CMD")
+    expectsInput(objectName = "ATAstack", objectClass = "RasterStack",
+                 desc = "annual projected mean annual temperature anomalies",
+                 sourceURL = "https://drive.google.com/open?id=1mNdLnQv09N0mf5e5v8D8rIfsnLovpdyE"),
+    expectsInput(objectName = "CMDstack", objectClass = "RasterStack",
+                 desc = "annual projected mean climate moisture deficit",
+                 sourceURL = "https://drive.google.com/open?id=1qt-9vNf5fpcprojD9Y9nhuh7oPfW235m"),
+    expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
+                 desc = "template raster for ATA and CMD")
   ),
   outputObjects = bind_rows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
-    createsOutput(objectName = "PSPmodelData", objectClass = "data.table", desc = "PSP growth mortality calculations"),
-    createsOutput(objectName = 'CMD', objectClass = "RasterLayer", desc = "climate moisture deficit at time(sim), resampled using rasterToMatch"),
-    createsOutput(objectName = 'ATA', objectClass = "RasterLayer", desc = "annual temperature anomaly, resampled using rasterToMatch"),
-    createsOutput(objectName = "gmcsModel", objectClass = "ModelObject?", desc = "Multivariate mixed effect model with mortality, growth, and netbiomass change as dependent variables, and log(age), ATA, and CMD as predictors")
+    createsOutput(objectName = "PSPmodelData", objectClass = "data.table",
+                  desc = "PSP growth mortality calculations"),
+    createsOutput(objectName = 'CMD', objectClass = "RasterLayer",
+                  desc = "climate moisture deficit at time(sim), resampled using rasterToMatch"),
+    createsOutput(objectName = 'ATA', objectClass = "RasterLayer",
+                  desc = "annual temperature anomaly, resampled using rasterToMatch"),
+    createsOutput(objectName = "gcsModel", objectClass = "ModelObject?",
+                  desc = "growth mixed effect model with normalized log(age), ATA, and CMD as predictors"),
+    createsOutput(objectName = "mcsModel", objectClass = "ModelObject?",
+                  desc = "mortality mixed effect model with normalized log(age), ATA, and CMD as predictors")
   )
 ))
 
@@ -94,7 +112,8 @@ Init <- function(sim) {
                                     minDBH = P(sim)$minDBH,
                             userTags = c("gmcsDataPrep", "prepModelData"))
 
-  sim$gmcsModel <- gmcsModelBuild(sim$PSPmodelData)
+  sim$gcsModel <- gmcsModelBuild(sim$PSPmodelData, type = "growth")
+  sim$mcsModel <- gmcsModelBuild(sim$PSPmodelData, type = "mortality")
 
   return(invisible(sim))
 }
@@ -300,18 +319,21 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
   return(PSPmodelData)
 }
 
-gmcsModelBuild <- function(PSPmodelData) {
+gmcsModelBuild <- function(PSPmodelData, type = "growth") {
 
   #Center data on the mean
   PSPmodelData$mLogAge <- PSPmodelData$logAge - mean(PSPmodelData$logAge)
   PSPmodelData$mCMD <- PSPmodelData$CMD - mean(PSPmodelData$CMD)
   PSPmodelData$mATA <- PSPmodelData$ATA - mean(PSPmodelData$ATA)
-  gmcsModel <- nlme::lme(cbind(netBiomass, growth, mortality) ~ mLogAge + mCMD + mATA + mLogAge:mCMD +
-                         mCMD:mATA + mATA:mLogAge, random = ~1 | OrigPlotID1, data = PSPmodelData,
-                       weights = varFunc(~plotSize^0.5 * periodLength))
+
+  Pt1 <- paste0(" ~ mLogAge + mCMD + mATA + mLogAge:mCMD + mCMD:mATA + mATA:mLogAge, random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)")
+  Pt2 <- paste0("nlme::lme(", parse(text = type), Pt1)
+  gmcsModel <- eval(parse(text = Pt2))
+
   return(gmcsModel)
 
 }
+
 resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
 
   currentRas <- grep(pattern = time, x = names(stack))
