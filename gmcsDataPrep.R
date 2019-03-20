@@ -15,7 +15,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd", "PredictiveEcology/pemisc@development"),
-  reqdPkgs = list('data.table', 'sf', 'sp', 'raster', "nlme"),
+  reqdPkgs = list('data.table', 'sf', 'sp', 'raster', "nlme", "crayon"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".useCache", "logical", FALSE, NA, NA, desc = "Should this entire module be run with caching activated? This is generally intended for data-type modules, where stochasticity and time are not relevant"),
@@ -60,7 +60,9 @@ defineModule(sim, list(
     createsOutput(objectName = "gcsModel", objectClass = "ModelObject?",
                   desc = "growth mixed effect model with normalized log(age), ATA, and CMD as predictors"),
     createsOutput(objectName = "mcsModel", objectClass = "ModelObject?",
-                  desc = "mortality mixed effect model with normalized log(age), ATA, and CMD as predictors")
+                  desc = "mortality mixed effect model with normalized log(age), ATA, and CMD as predictors"),
+    createsOutput(objectName = "centeringVec", objectClass = "numeric",
+                  desc = "the means of the model data used to center the variables, for use in LandR.CS")
   )
 ))
 
@@ -101,7 +103,7 @@ Init <- function(sim) {
     stop("Please supply P(sim)$PSPperiod of length 2 or greater")
   }
 
-  sim$PSPmodelData <- Cache(prepModelData, studyAreaLarge = sim$studyAreaLarge,
+  PSPmodelData <- Cache(prepModelData, studyAreaLarge = sim$studyAreaLarge,
                                     PSPgis = sim$PSPgis,
                                     PSPmeasure = sim$PSPmeasure,
                                     PSPplot = sim$PSPplot,
@@ -111,6 +113,9 @@ Init <- function(sim) {
                                     PSPperiod = P(sim)$PSPperiod,
                                     minDBH = P(sim)$minDBH,
                             userTags = c("gmcsDataPrep", "prepModelData"))
+
+  sim$PSPmodelData <- PSPmodelData[[1]]
+  sim$centeringVec <- PSPmodelData[[2]]
 
   sim$gcsModel <- gmcsModelBuild(sim$PSPmodelData, type = "growth")
   sim$mcsModel <- gmcsModelBuild(sim$PSPmodelData, type = "mortality")
@@ -124,10 +129,10 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
   #Crop points to studyArea
   tempSA <- spTransform(x = studyAreaLarge, CRSobj = crs(PSPgis)) %>%
     st_as_sf(.)
-  message("Filtering PSPs to study Area...")
+  message(crayon::yellow("Filtering PSPs to study Area..."))
   PSP_sa <- PSPgis[tempSA,] %>% #Find how to cache this. '[' did not work
     setkey(., OrigPlotID1)
-  message(paste0("There are "), nrow(PSP_sa), " PSPs in your study area")
+  message(crayon::yellow(paste0("There are "), nrow(PSP_sa), " PSPs in your study area"))
   #Restrict climate variables to only thosee of interest.. should be param
   PSPclimData <- PSPclimData[,.("OrigPlotID1" = ID1, Year, CMD, MAT)]
 
@@ -138,7 +143,7 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
 
   #length(PSPclimData)/length(PSP_sa) should always yield a whole number.
   #Filter data by study period
-  message("Filtering by study period...")
+  message(crayon::yellow("Filtering by study period..."))
   PSPmeasure <- PSPmeasure[MeasureYear > min(PSPperiod) &
                              MeasureYear < max(PSPperiod),]
   PSPplot <- PSPplot[MeasureYear > min(PSPperiod) &
@@ -150,23 +155,23 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
   PSPmeasure[, c('Longitude', 'Latitude', 'Easting', 'Northing', 'Zone'):= NULL]
 
   #Filter by > 30 trees at first measurement (P) to ensure forest.
-  message("Filtering by min. 30 trees in earliest measurement")
+  message(crayon::yellow("Filtering by min. 30 trees in earliest measurement"))
   forestPlots <- PSPmeasure[MeasureYear == baseYear, .(measures = .N), OrigPlotID1] %>%
     .[measures >= 30,]
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% forestPlots$OrigPlotID1,]
   PSPplot <- PSPplot[OrigPlotID1 %in% PSPmeasure$OrigPlotID1,]
   repeats <- PSPplot[, .(measures = .N), by = OrigPlotID1]
-  message(paste0("There are "), nrow(repeats), " PSPs with min. 30 trees at earliest measurement")
+  message(crayon::yellow(paste0("There are "), nrow(repeats), " PSPs with min. 30 trees at earliest measurement"))
 
   #Filter by 3+ repeat measures - must be last filter criteria. Removes the most.
   #Some plots share ID but have different trees so simple count of plots insufficient to find repeat measures
-  message("Filtering by at least 3 repeat measures per plot")
+  message(crayon::yellow("Filtering by at least 3 repeat measures per plot"))
   repeats <- PSPplot[, .(measures = .N), by = .(OrigPlotID1, MeasureYear)]
   actualCount <- repeats[, .(measures = .N), by = OrigPlotID1]
   actualCount <- actualCount[measures > 2]
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% actualCount$OrigPlotID1,]
   PSPplot <- PSPplot[OrigPlotID1 %in% PSPmeasure$OrigPlotID1,]
-  message(paste0("There are "), nrow(actualCount), " PSPs with min. 3 repeat measures")
+  message(crayon::yellow(paste0("There are "), nrow(actualCount), " PSPs with min. 3 repeat measures"))
 
   #Restrict to trees > 10 DBH (P) This gets rid of some big trees. Some 15 metres tall
   PSPmeasure <- PSPmeasure[DBH >= minDBH,]
@@ -184,7 +189,7 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
                                         height = PSPmeasure$Height,
                                         includeHeight = useHeight,
                                         equationSource = biomassModel)
-  message("No biomass estimate possible for these species: ")
+  message(crayon::yellow("No biomass estimate possible for these species: "))
   print(tempOut$missedSpecies)
   PSPmeasure$biomass <- tempOut$biomass
   PSPmeasure <- PSPmeasure[biomass != 0]
@@ -310,13 +315,20 @@ prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
   #26/02/2019 after discussion we decided not to include species in model.
   # Decided to parameterize inclusion of ATA or year. ATA better for projecting, year is canonical
   # Sum mortality, growth, and netBiomass by Plot and year
+
+  #Need means of ATA, CMD, and logAge for LandR.CS
+  centeringVec <- c("logAge" = mean(PSPmodelData$logAge),
+                    "ATA" = mean(PSPmodelData$ATA),
+                    "CMD" = mean(PSPmodelData$CMD))
+
+  #I take the means of several variables that are constant only to ensure equal number of rows.
   PSPmodelData <- PSPmodelData[, .("growth" = sum(growthMg), "mortality" = sum(mortalityMg),
                                    "netBiomass" = sum(netBiomassMg), 'CMD' = mean(CMD), 'CMDA' = mean(CMDA),
                                    'AT' = mean(AT), "ATA" = mean(ATA), 'standAge' = mean(standAge),
                                    'logAge' = mean(logAge), "periodLength" = mean(periodLength),
                                    'year' = mean(year), 'plotSize' = mean(plotSize)), by = c("OrigPlotID1", "period")]
 
-  return(PSPmodelData)
+  return(list(PSPmodelData, centeringVec))
 }
 
 gmcsModelBuild <- function(PSPmodelData, type = "growth") {
@@ -326,9 +338,16 @@ gmcsModelBuild <- function(PSPmodelData, type = "growth") {
   PSPmodelData$mCMD <- PSPmodelData$CMD - mean(PSPmodelData$CMD)
   PSPmodelData$mATA <- PSPmodelData$ATA - mean(PSPmodelData$ATA)
 
+  #This is a long and silly way of substituting the dependent variable for the function arg. Improve?
   Pt1 <- paste0(" ~ mLogAge + mCMD + mATA + mLogAge:mCMD + mCMD:mATA + mATA:mLogAge, random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)")
   Pt2 <- paste0("nlme::lme(", parse(text = type), Pt1)
   gmcsModel <- eval(parse(text = Pt2))
+
+  #Yong's original multivariate model (year substituted for ATA)
+  #Yong made separate univariate models where year was substituted for C02, ACMD, and ATA. CMD = CMI (ish)
+  # gmcsModel1 <- lme(cbind(netBiomass, growth, mortality) ~ mLogAge + mCMD + mATA + mLogAge:mCMD + mCMD:mATA + mATA:mLogAge,
+  #                   random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)
+
 
   return(gmcsModel)
 
@@ -349,7 +368,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
                                     filename2 = NULL,
                               userTags = c("yearRasResampled", time))
   } else {
-    message(blue(paste0("no climate effect for year ", time)))
+    message(crayon::red(paste0("no climate effect for year ", time)))
     yearRas <- raster(rasterToMatch) #Make a NULL raster for no climate effect
     yearRas[] <- 0
   }
