@@ -34,8 +34,8 @@ defineModule(sim, list(
                  desc = "PSP plot data as sf object", sourceURL = NA),
     expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame",
                  desc = "this area will be used to crop climate rasters", sourceURL = NA),
-    expectsInput(objectName = 'studyAreaLarge', objectClass = 'SpatialPolygonsDataFrame',
-                 desc = "this area will be used to subset PSP plots before building the statistical model.",
+    expectsInput(objectName = 'studyAreaPSP', objectClass = 'SpatialPolygonsDataFrame',
+                 desc = "this area will be used to subset PSP plots before building the statistical model. Currently PSP datasets with repeat measures exist only for Saskatchewan, Alberta, and Boreal British Columbia",
                  sourceURL = NA),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table",
                  desc = "climate data for each PSP",
@@ -103,7 +103,7 @@ Init <- function(sim) {
     stop("Please supply P(sim)$PSPperiod of length 2 or greater")
   }
 
-  PSPmodelData <- Cache(prepModelData, studyAreaLarge = sim$studyAreaLarge,
+  PSPmodelData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
                                     PSPgis = sim$PSPgis,
                                     PSPmeasure = sim$PSPmeasure,
                                     PSPplot = sim$PSPplot,
@@ -123,11 +123,11 @@ Init <- function(sim) {
   return(invisible(sim))
 }
 
-prepModelData <- function(studyAreaLarge, PSPgis, PSPmeasure, PSPplot,
+prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
                           PSPclimData, useHeight, biomassModel,
                           PSPperiod, minDBH) {
   #Crop points to studyArea
-  tempSA <- spTransform(x = studyAreaLarge, CRSobj = crs(PSPgis)) %>%
+  tempSA <- spTransform(x = studyAreaPSP, CRSobj = crs(PSPgis)) %>%
     st_as_sf(.)
   message(crayon::yellow("Filtering PSPs to study Area..."))
   PSP_sa <- PSPgis[tempSA,] %>% #Find how to cache this. '[' did not work
@@ -408,9 +408,9 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
     sim$studyArea <- randomStudyArea(size = 1e6)
   }
 
-  if (!suppliedElsewhere("studyAreaLarge", sim)) {
-    message("studyAreaLarge not supplied. Using study area. You may want to supply studyAreaLarge if your studyArea is sub-provincial due to sample size issues with the multivariate model")
-    sim$studyAreaLarge <- sim$studyArea
+  if (!suppliedElsewhere("studyAreaPSP", sim)) {
+    message("studyAreaPSP not supplied. Using study area. You may want to supply studyAreaPSP if your studyArea is sub-provincial due to sample size issues with the multivariate model")
+    sim$studyAreaPSP <- sim$studyArea
   }
 
   if (!suppliedElsewhere("PSPclimData", sim)) {
@@ -421,7 +421,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
   }
 
   if (!suppliedElsewhere("ATAstack", sim)) {
-    #These should not be called using prepInputs -- each stack has 90 rasters and prepInputs isn't ready for stacks
+    #These should not be called using rasterToMatch unless you want 200 cliamte rasters all at once
     #they need to be subset, resampled, and reprojected every year
     sim$ATAstack <- prepInputs(targetFile = "CanATA_2011-2100.gri",
                                url = extractURL("ATAstack"),
@@ -446,7 +446,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
 
   if (!suppliedElsewhere("rasterToMatch", sim)) {
     message("rasterToMatch not supplied. Generating from LCC2005")
-    sim$rasterToMatch <- LandR::prepInputsLCC(studyArea = studyAreaLarge, filename2 = NULL, destinationPath = dPath)
+    sim$rasterToMatch <- LandR::prepInputsLCC(studyArea = studyArea, filename2 = NULL, destinationPath = dPath)
   }
   return(invisible(sim))
 }
