@@ -423,7 +423,9 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
   if (!suppliedElsewhere("ATAstack", sim)) {
     #These should not be called using rasterToMatch unless you want 200 cliamte rasters all at once
     #they need to be subset, resampled, and reprojected every year
-    sim$ATAstack <- prepInputs(targetFile = "CanATA_2011-2100.gri",
+    sim$ATAstack <- prepInputs(archive = "CanATA_2011-2100.zip",
+                               targetFile = "CanATA_2011-2100.grd",
+                               alsoExtract = "similar",
                                url = extractURL("ATAstack"),
                                destinationPath = dPath,
                                fun = "raster::stack",
@@ -435,7 +437,9 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
   if (!suppliedElsewhere("CMDstack", sim)) {
     #These should not be called with RasterToMatch -- each stack has 90 rasters and prepInputs isn't ready for stacks
     #they need to be subset, resampled, and reprojected every year
-    sim$CMDstack <- prepInputs(targetFile = "CanCMD_2011-2100.gri",
+    sim$CMDstack <- prepInputs(targetFile = "CanCMD_2011-2100.grd",
+                               archive = "CanCMD_2011-2100.zip",
+                               alsoExtract = "similar",
                                url = extractURL("CMDstack"),
                                destinationPath = dPath,
                                fun = "raster::stack",
