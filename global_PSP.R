@@ -1,5 +1,7 @@
 library(SpaDES)
 library(raster)
+library(magrittr)
+
 setPaths(cachePath = "cache",
          modulePath = "../",
          inputPath = "inputs",
@@ -17,11 +19,11 @@ parameters <- list(
 
 studyArea <- shapefile("C:/Ian/PracticeDirectory/scfm/RIA_studyArea.shp")
 rasterToMatch <- raster("C:/Ian/PracticeDirectory/scfm/RIA_studyAreaRas.tif")
-studyAreaLarge <- shapefile("C:/Ian/Campbell/RIA/GIS/RIA_StudyArea/RIA_StudyArea_Valid.shp") %>%
+studyAreaPSP <- shapefile("C:/Ian/Campbell/RIA/GIS/RIA_StudyArea/RIA_StudyArea_Valid.shp") %>%
   spTransform(., CRSobj = crs(rasterToMatch))
 
 modules <- list("gmcsDataPrep", "PSP_Clean")
-objects <- list("studyAreaLarge" = studyAreaLarge,
+objects <- list("studyAreaPSP" = studyAreaPSP,
                 "rasterToMatch" = rasterToMatch,
                 "studyArea" = studyArea)
 
