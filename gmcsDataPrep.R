@@ -21,7 +21,7 @@ defineModule(sim, list(
     defineParameter(".useCache", "logical", FALSE, NA, NA, desc = "Should this entire module be run with caching activated? This is generally intended for data-type modules, where stochasticity and time are not relevant"),
     defineParameter("PSPperiod", "numeric", c(1958, 2011), NA, NA, desc = "The years by which to compute climate normals and subset sampling plot data. Must be a vector of at least length 2"),
     defineParameter("minDBH", "numeric", 10, 0, NA, desc = "The minimum DBH allowed. Each province uses different criteria for monitoring trees, so absence of entries < min(DBH) does not equate to absence of trees."),
-    defineParameter("useHeight", "logical", TRUE, NA, NA, desc = "Should height be used to calculate biomass (in addition to DBH)"),
+    defineParameter("useHeight", "logical", FALSE, NA, NA, desc = "Should height be used to calculate biomass (in addition to DBH). Don't use if studyAreaPSP includes Alberta"),
     defineParameter("biomassModel", "character", "Lambert2005", NA, NA, desc =  "The model used to calculate biomass from DBH. Can be either 'Lambert2005' or 'Ung2008'")
   ),
   inputObjects = bind_rows(
@@ -163,15 +163,22 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   repeats <- PSPplot[, .(measures = .N), by = OrigPlotID1]
   message(crayon::yellow(paste0("There are "), nrow(repeats), " PSPs with min. 30 trees at earliest measurement"))
 
-  #Filter by 3+ repeat measures - must be last filter criteria. Removes the most.
+  #Filter by 3+ repeat measures - must be last filter criteria. Also the most complex (thanks Alberta)
   #Some plots share ID but have different trees so simple count of plots insufficient to find repeat measures
+  #Reduce PSPmeasure to MeasureID, PlotID1, PlotID2, MeasureYear, remove duplicates
+  # then find repeat measures of MeasureYear, match back to MeasureID in both PSPplot and PSPmeasure.
   message(crayon::yellow("Filtering by at least 3 repeat measures per plot"))
-  repeats <- PSPplot[, .(measures = .N), by = .(OrigPlotID1, MeasureYear)]
-  actualCount <- repeats[, .(measures = .N), by = OrigPlotID1]
-  actualCount <- actualCount[measures > 2]
-  PSPmeasure <- PSPmeasure[OrigPlotID1 %in% actualCount$OrigPlotID1,]
-  PSPplot <- PSPplot[OrigPlotID1 %in% PSPmeasure$OrigPlotID1,]
-  message(crayon::yellow(paste0("There are "), nrow(actualCount), " PSPs with min. 3 repeat measures"))
+
+  repeats <- PSPmeasure[, .(MeasureID, OrigPlotID1, OrigPlotID2, MeasureYear)] %>%
+    .[!duplicated(.)] %>%
+    .[, .('repeatMeasures' = .N), by = .(OrigPlotID1, OrigPlotID2)] %>%
+    .[repeatMeasures > 2]
+  setkey(repeats, OrigPlotID1, OrigPlotID2)
+  setkey(PSPmeasure, OrigPlotID1, OrigPlotID2)
+  PSPmeasure <- PSPmeasure[repeats]
+  PSPplot <- PSPplot[MeasureID %in% PSPmeasure$MeasureID]
+
+  message(crayon::yellow(paste0("There are "), nrow(repeats), " PSPs with min. 3 repeat measures"))
 
   #Restrict to trees > 10 DBH (P) This gets rid of some big trees. Some 15 metres tall
   PSPmeasure <- PSPmeasure[DBH >= minDBH,]
