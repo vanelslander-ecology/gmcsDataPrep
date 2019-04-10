@@ -43,24 +43,24 @@ defineModule(sim, list(
     expectsInput(objectName = "ATAstack", objectClass = "RasterStack",
                  desc = "annual projected mean annual temperature anomalies",
                  sourceURL = "https://drive.google.com/open?id=1mNdLnQv09N0mf5e5v8D8rIfsnLovpdyE"),
-    expectsInput(objectName = "CMDstack", objectClass = "RasterStack",
+    expectsInput(objectName = "CMIstack", objectClass = "RasterStack",
                  desc = "annual projected mean climate moisture deficit",
-                 sourceURL = "https://drive.google.com/open?id=1qt-9vNf5fpcprojD9Y9nhuh7oPfW235m"),
+                 sourceURL = "https://drive.google.com/open?id=1FhT4JH849WXj4B2659cnzsV3IjaXb-zm"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
-                 desc = "template raster for ATA and CMD")
+                 desc = "template raster for ATA and CMI")
   ),
   outputObjects = bind_rows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
     createsOutput(objectName = "PSPmodelData", objectClass = "data.table",
                   desc = "PSP growth mortality calculations"),
-    createsOutput(objectName = 'CMD', objectClass = "RasterLayer",
+    createsOutput(objectName = 'CMI', objectClass = "RasterLayer",
                   desc = "climate moisture deficit at time(sim), resampled using rasterToMatch"),
     createsOutput(objectName = 'ATA', objectClass = "RasterLayer",
                   desc = "annual temperature anomaly, resampled using rasterToMatch"),
     createsOutput(objectName = "gcsModel", objectClass = "ModelObject?",
-                  desc = "growth mixed effect model with normalized log(age), ATA, and CMD as predictors"),
+                  desc = "growth mixed effect model with normalized log(age), ATA, and CMI as predictors"),
     createsOutput(objectName = "mcsModel", objectClass = "ModelObject?",
-                  desc = "mortality mixed effect model with normalized log(age), ATA, and CMD as predictors"),
+                  desc = "mortality mixed effect model with normalized log(age), ATA, and CMI as predictors"),
     createsOutput(objectName = "centeringVec", objectClass = "numeric",
                   desc = "the means of the model data used to center the variables, for use in LandR.CS")
   )
@@ -81,7 +81,7 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
     prepRasters = {
       sim$ATA <- resampleStacks(stack = sim$ATAstack, time = time(sim), isATA = TRUE,
                                 studyArea = sim$studyArea, rtm = sim$rasterToMatch)
-      sim$CMD <- resampleStacks(stack = sim$CMDstack, time = time(sim),
+      sim$CMI <- resampleStacks(stack = sim$CMIstack, time = time(sim),
                                 studyArea = sim$studyArea, rtm = sim$rasterToMatch)
       sim <- scheduleEvent(sim, time(sim) + 1, eventType = "prepRasters", eventPriority = 1)
     },
@@ -134,7 +134,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
     setkey(., OrigPlotID1)
   message(crayon::yellow(paste0("There are "), nrow(PSP_sa), " PSPs in your study area"))
   #Restrict climate variables to only thosee of interest.. should be param
-  PSPclimData <- PSPclimData[,.("OrigPlotID1" = ID1, Year, CMD, MAT)]
+  PSPclimData <- PSPclimData[,.("OrigPlotID1" = ID1, Year, CMI, MAT)]
 
   #Filter other PSP datasets to those in study Area
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
@@ -184,10 +184,10 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   PSPmeasure <- PSPmeasure[DBH >= minDBH,]
 
   #Calculate Climate Means
-  mCMD <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("mCMD" = mean(CMD)), OrigPlotID1]
+  mCMI <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("mCMI" = mean(CMI)), OrigPlotID1]
   mMAT <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("mMAT" = mean(MAT)), OrigPlotID1]
 
-  PSPplot <- PSPplot[mCMD, on = "OrigPlotID1"]
+  PSPplot <- PSPplot[mCMI, on = "OrigPlotID1"]
   PSPplot <- PSPplot[mMAT, on = "OrigPlotID1"]
 
   #Calculate biomass
@@ -222,12 +222,12 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
     #For each interval
     pSums <- lapply(1:periods, function(i, M = m, P = p, Clim = clim){
 
-      #Calculate climate variables. Yong originally modeled CMD.
-      #ACMD and ATA were added individually in separate model
-      CMD <- mean(Clim$CMD[Clim$Year >= p$MeasureYear[i] &
+      #Calculate climate variables.
+      #ACMI and ATA were added individually in separate model
+      CMI <- mean(Clim$CMI[Clim$Year >= p$MeasureYear[i] &
                              Clim$Year <= p$MeasureYear[i+1]])
-      ACMD <- mean(Clim$CMD[Clim$Year >= p$MeasureYear[i] &
-                             Clim$Year <= p$MeasureYear[i+1]]) - p$mCMD[1]
+      ACMI <- mean(Clim$CMI[Clim$Year >= p$MeasureYear[i] &
+                             Clim$Year <= p$MeasureYear[i+1]]) - p$mCMI[1]
       ATA <- mean(Clim$MAT[Clim$Year >= p$MeasureYear[i] &
                              Clim$Year <= p$MeasureYear[i+1]]) - p$mMAT[1]
       AT <- mean(Clim$MAT[Clim$Year >= p$MeasureYear[i] &
@@ -291,8 +291,8 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
                              mortality)]
 
       changes$period <- period
-      changes$CMD <- CMD
-      changes$CMDA <- ACMD
+      changes$CMI <- CMI
+      changes$CMIA <- ACMI
       changes$ATA <- ATA
       changes$OrigPlotID1 <- p$OrigPlotID1[1]
       changes$year <- year
@@ -304,7 +304,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
 
       #stand age is constant through time in the data. hmm
       setcolorder(changes, c("OrigPlotID1", "period", "species", "sppLong", "growth", "mortality", "netBiomass",
-                            "CMD", "CMDA", "AT", "ATA", "standAge", "logAge", "plotSize", "periodLength"))
+                            "CMI", "CMIA", "AT", "ATA", "standAge", "logAge", "plotSize", "periodLength"))
       return(changes)
     })
 
@@ -323,14 +323,14 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   # Decided to parameterize inclusion of ATA or year. ATA better for projecting, year is canonical
   # Sum mortality, growth, and netBiomass by Plot and year
 
-  #Need means of ATA, CMD, and logAge for LandR.CS
+  #Need means of ATA, CMI, and logAge for LandR.CS
   centeringVec <- c("logAge" = mean(PSPmodelData$logAge),
                     "ATA" = mean(PSPmodelData$ATA),
-                    "CMD" = mean(PSPmodelData$CMD))
+                    "CMI" = mean(PSPmodelData$CMI))
 
   #I take the means of several variables that are constant only to ensure equal number of rows.
   PSPmodelData <- PSPmodelData[, .("growth" = sum(growthMg), "mortality" = sum(mortalityMg),
-                                   "netBiomass" = sum(netBiomassMg), 'CMD' = mean(CMD), 'CMDA' = mean(CMDA),
+                                   "netBiomass" = sum(netBiomassMg), 'CMI' = mean(CMI), 'CMIA' = mean(CMIA),
                                    'AT' = mean(AT), "ATA" = mean(ATA), 'standAge' = mean(standAge),
                                    'logAge' = mean(logAge), "periodLength" = mean(periodLength),
                                    'year' = mean(year), 'plotSize' = mean(plotSize)), by = c("OrigPlotID1", "period")]
@@ -342,17 +342,17 @@ gmcsModelBuild <- function(PSPmodelData, type = "growth") {
 
   #Center data on the mean
   PSPmodelData$mLogAge <- PSPmodelData$logAge - mean(PSPmodelData$logAge)
-  PSPmodelData$mCMD <- PSPmodelData$CMD - mean(PSPmodelData$CMD)
+  PSPmodelData$mCMI <- PSPmodelData$CMI - mean(PSPmodelData$CMI)
   PSPmodelData$mATA <- PSPmodelData$ATA - mean(PSPmodelData$ATA)
 
   #This is a long and silly way of substituting the dependent variable for the function arg. Improve?
-  Pt1 <- paste0(" ~ mLogAge + mCMD + mATA + mLogAge:mCMD + mCMD:mATA + mATA:mLogAge, random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)")
+  Pt1 <- paste0(" ~ mLogAge + mCMI + mATA + mLogAge:mCMI + mCMI:mATA + mATA:mLogAge, random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)")
   Pt2 <- paste0("nlme::lme(", parse(text = type), Pt1)
   gmcsModel <- eval(parse(text = Pt2))
 
   #Yong's original multivariate model (year substituted for ATA)
-  #Yong made separate univariate models where year was substituted for C02, ACMD, and ATA. CMD = CMI (ish)
-  # gmcsModel1 <- lme(cbind(netBiomass, growth, mortality) ~ mLogAge + mCMD + mATA + mLogAge:mCMD + mCMD:mATA + mATA:mLogAge,
+  #Yong made separate univariate models where year was substituted for C02, ACMI, and ATA.
+  # gmcsModel1 <- lme(cbind(netBiomass, growth, mortality) ~ mLogAge + mCMI + mATA + mLogAge:mCMI + mCMI:mATA + mATA:mLogAge,
   #                   random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)
 
 
@@ -425,6 +425,9 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
                                  url = extractURL("PSPclimData"),
                                  destinationPath = dPath,
                                  fun = "data.table::fread")
+   #Calculate CMI - this variable is not included in climateNA.
+   #CMI = annual precipitation - potential evapotranspiration
+   sim$PSPclimData <- sim$PSPclimData[, "CMI" := MAP - Eref]
   }
 
   if (!suppliedElsewhere("ATAstack", sim)) {
@@ -441,13 +444,13 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
                                ) #if a pixel is 10 degrees above average, needs 4S
   }
 
-  if (!suppliedElsewhere("CMDstack", sim)) {
+  if (!suppliedElsewhere("CMIstack", sim)) {
     #These should not be called with RasterToMatch -- each stack has 90 rasters and prepInputs isn't ready for stacks
     #they need to be subset, resampled, and reprojected every year
-    sim$CMDstack <- prepInputs(targetFile = "CanCMD_2011-2100.grd",
-                               archive = "CanCMD_2011-2100.zip",
+    sim$CMIstack <- prepInputs(targetFile = "CanCMI_2011-2100.grd",
+                               archive = "CanCMI_2011-2100.zip",
                                alsoExtract = "similar",
-                               url = extractURL("CMDstack"),
+                               url = extractURL("CMIstack"),
                                destinationPath = dPath,
                                fun = "raster::stack",
                                overwrite = TRUE,
