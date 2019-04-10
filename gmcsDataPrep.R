@@ -45,7 +45,7 @@ defineModule(sim, list(
                  sourceURL = "https://drive.google.com/open?id=1mNdLnQv09N0mf5e5v8D8rIfsnLovpdyE"),
     expectsInput(objectName = "CMIstack", objectClass = "RasterStack",
                  desc = "annual projected mean climate moisture deficit",
-                 sourceURL = "https://drive.google.com/open?id=1FhT4JH849WXj4B2659cnzsV3IjaXb-zm"),
+                 sourceURL = "https://drive.google.com/open?id=1Dfs01wRMy41wZ8Ft5iexjOII1rWR6K2y"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
                  desc = "template raster for ATA and CMI")
   ),
