@@ -315,15 +315,15 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   PSPmodelData$species <- factor(PSPmodelData$species)
   PSPmodelData$sppLong <- factor(PSPmodelData$sppLong)
 
-  #Standardize by plotSize and change units to Mg from kg. Now in Mg/ha
-  PSPmodelData <- PSPmodelData[, growthMg := growth/plotSize/1000] %>%
-    .[, mortalityMg := mortality/plotSize/1000] %>%
-    .[, netBiomassMg := netBiomass/plotSize/1000]
+  #Standardize by plotSize and change units from kg/ha to g/m2. = *1000 g/kg / 10000 m2/ha
+  PSPmodelData <- PSPmodelData[, growth_gm2 := growth/plotSize/1000*100] %>%
+    .[, mortality_gm2 := mortality/plotSize/1000*100] %>%
+    .[, netBiomass_gm2 := netBiomass/plotSize/1000*100]
   #26/02/2019 after discussion we decided not to include species in model.
   # Decided to parameterize inclusion of ATA or year. ATA is better for projecting, but year is canonical
   # Sum species-specific mortality, growth, and net biomass by plot and year
-  PSPmodelData <- PSPmodelData[, .("growth" = sum(growthMg), "mortality" = sum(mortalityMg),
-                                   "netBiomass" = sum(netBiomassMg), 'CMI' = mean(CMI), 'CMIA' = mean(CMIA),
+  PSPmodelData <- PSPmodelData[, .("growth" = sum(growth_gm2), "mortality" = sum(mortality_gm2),
+                                   "netBiomass" = sum(netBiomass_gm2), 'CMI' = mean(CMI), 'CMIA' = mean(CMIA),
                                    'AT' = mean(AT), "ATA" = mean(ATA), 'standAge' = mean(standAge),
                                    'logAge' = mean(logAge), "periodLength" = mean(periodLength),
                                    'year' = mean(year), 'plotSize' = mean(plotSize)), by = c("OrigPlotID1", "period")]
