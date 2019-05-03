@@ -316,9 +316,9 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   PSPmodelData$sppLong <- factor(PSPmodelData$sppLong)
 
   #Standardize by plotSize and change units from kg/ha to g/m2. = *1000 g/kg / 10000 m2/ha
-  PSPmodelData <- PSPmodelData[, growth_gm2 := growth/plotSize/1000*100] %>%
-    .[, mortality_gm2 := mortality/plotSize/1000*100] %>%
-    .[, netBiomass_gm2 := netBiomass/plotSize/1000*100]
+  PSPmodelData <- PSPmodelData[, growth_gm2 := growth/plotSize/10] %>%
+    .[, mortality_gm2 := mortality/plotSize/10] %>%
+    .[, netBiomass_gm2 := netBiomass/plotSize/10]
   #26/02/2019 after discussion we decided not to include species in model.
   # Decided to parameterize inclusion of ATA or year. ATA is better for projecting, but year is canonical
   # Sum species-specific mortality, growth, and net biomass by plot and year
