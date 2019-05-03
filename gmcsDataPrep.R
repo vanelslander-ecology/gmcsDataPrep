@@ -61,7 +61,7 @@ defineModule(sim, list(
                   desc = "growth mixed effect model with normalized log(age), ATA, and CMI as predictors"),
     createsOutput(objectName = "mcsModel", objectClass = "ModelObject?",
                   desc = "mortality mixed effect model with normalized log(age), ATA, and CMI as predictors"),
-    createsOutput(objectName = "centeringVec", objectClass = "list",
+    createsOutput(objectName = "centeringVec", objectClass = "numeric",
                   desc = "the means of the model data used to center the variables and back-transform mortality, for use in LandR.CS")
   )
 ))
@@ -329,7 +329,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
                                    'year' = mean(year), 'plotSize' = mean(plotSize)), by = c("OrigPlotID1", "period")]
 
   #Need means of ATA, CMI, and logAge to center model; minimum non-zero mortality for back transformation
-  centeringVec <- list("logAge" = mean(PSPmodelData$logAge),
+  centeringVec <- c("logAge" = mean(PSPmodelData$logAge),
                        "ATA" = mean(PSPmodelData$ATA),
                        "CMI" = mean(PSPmodelData$CMI),
                        "minMort" = min(PSPmodelData$mortality[PSPmodelData$mortality > 0]))

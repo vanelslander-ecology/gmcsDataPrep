@@ -19,7 +19,7 @@ parameters <- list(
 
 studyArea <- shapefile("C:/Ian/PracticeDirectory/scfm/RIA_studyArea.shp")
 rasterToMatch <- raster("C:/Ian/PracticeDirectory/scfm/RIA_studyAreaRas.tif")
-studyAreaPSP <- shapefile("C:/Ian/Campbell/RIA/GIS/RIA_StudyArea/RIA_StudyArea_Valid.shp") %>%
+studyAreaPSP <- shapefile("C:/Ian/Data/Canada Ecosystem/Ecozones/ecozones.shp") %>%
   spTransform(., CRSobj = crs(rasterToMatch))
 
 modules <- list("gmcsDataPrep", "PSP_Clean")
