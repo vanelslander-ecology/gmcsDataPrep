@@ -364,7 +364,16 @@ gmcsModelBuild <- function(PSPmodelData, type = "growth") {
 }
 
 resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
+# Restructured to test time for number of characters (entering time as XX or YYYY)
 
+    if (nchar(time) <= 3){
+  time <- time + 2001
+  message(paste0("Time entered is < 1900. Temporarily converting your current time as ",
+                 crayon::yellow("time + 2001"),
+                 "(year of Knn data collection). The current time is now ", time, ".",
+                 " \nIf the simulation is set up for more than 1000 years,\nplease provide the start and end time as ",
+                 crayon::yellow("YYYY")))
+}
   currentRas <- grep(pattern = time, x = names(stack))
   if (length(currentRas) > 0) {
     yearRas <- stack[[currentRas]]
