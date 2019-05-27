@@ -372,14 +372,33 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
       #ATA was stored as an integer
       yearRas[] <- yearRas[]/1000
     }
+
+    rtmExt <- raster(rtm)
+    ymax(rtmExt) <- ymax(rtmExt) + abs(ymax(rtmExt) * 0.05)
+    ymin(rtmExt) <- ymin(rtmExt) - abs(ymin(rtmExt) * 0.05)
+    xmax(rtmExt) <- xmax(rtmExt) + abs(xmax(rtmExt) * 0.05)
+    xmin(rtmExt) <- xmin(rtmExt) - abs(xmin(rtmExt) * 0.05)
+
+    rtmExt[] <- 1
+    reprojRTM <- projectRaster(rtmExt, yearRas)
+    yearRas <- crop(yearRas, reprojRTM) %>%
+      projectRaster(., rasterToMatch)
+
     yearRasResampled <- Cache(postProcess, yearRas,
                                     rasterToMatch = rtm,
                                     studyArea = studyArea,
                                     filename2 = NULL,
                               userTags = c("yearRasResampled", time))
+    medianVals <- median(yearRasResampled[], na.rm = TRUE)
+    if (!is.null(yearRasResampled[is.na(yearRasResampled) & !is.na(rasterToMatch)])) {
+        yearRasResampled[is.na(yearRasResampled) & !is.na(rasterToMatch)] <- medianVals
+    }
+
+
   } else {
     message(red(paste0("no climate effect for year ", time)))
-    yearRas <- raster(rasterToMatch) #Make a NULL raster for no climate effect
+    #This has not been tested.
+    yearRas <- rasterToMatch #Make a NULL raster for no climate effect
     yearRas[] <- 0
   }
 
