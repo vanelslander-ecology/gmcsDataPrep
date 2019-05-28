@@ -394,11 +394,11 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
     yearRas <- crop(yearRas, reprojRTM) %>%
       projectRaster(., rasterToMatch)
 
-    yearRasResampled <- Cache(postProcess, yearRas,
+    yearRasResampled <- postProcess(yearRas,
                                     rasterToMatch = rtm,
                                     studyArea = studyArea,
                                     filename2 = NULL,
-                              userTags = c("yearRasResampled", time))
+                                    method = "bilinear")
     medianVals <- median(yearRasResampled[], na.rm = TRUE)
     if (!is.null(yearRasResampled[is.na(yearRasResampled) & !is.na(rasterToMatch)])) {
         yearRasResampled[is.na(yearRasResampled) & !is.na(rasterToMatch)] <- medianVals
