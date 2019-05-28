@@ -79,6 +79,7 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
     },
 
     prepRasters = {
+
       sim$ATA <- resampleStacks(stack = sim$ATAstack, time = time(sim), isATA = TRUE,
                                 studyArea = sim$studyArea, rtm = sim$rasterToMatch)
       sim$CMI <- resampleStacks(stack = sim$CMIstack, time = time(sim),
@@ -373,7 +374,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
                  "(year of Knn data collection). The current time is now ", time, ".",
                  " \nIf the simulation is set up for more than 1000 years,\nplease provide the start and end time as ",
                  crayon::yellow("YYYY")))
-}
+    }
   currentRas <- grep(pattern = time, x = names(stack))
   if (length(currentRas) > 0) {
     yearRas <- stack[[currentRas]]
@@ -402,8 +403,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
     if (!is.null(yearRasResampled[is.na(yearRasResampled) & !is.na(rasterToMatch)])) {
         yearRasResampled[is.na(yearRasResampled) & !is.na(rasterToMatch)] <- medianVals
     }
-
-
+    return(yearRasResampled)
   } else {
     message(red(paste0("no climate effect for year ", time)))
     #This has not been tested.
@@ -411,7 +411,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
     yearRas[] <- 0
   }
 
-  return(yearRasResampled)
+  return(yearRas)
 }
 
 
