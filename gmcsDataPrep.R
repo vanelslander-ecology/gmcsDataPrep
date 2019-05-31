@@ -377,6 +377,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
     }
   currentRas <- grep(pattern = time, x = names(stack))
   if (length(currentRas) > 0) {
+
     yearRas <- stack[[currentRas]]
     if (isATA == TRUE) {
       #ATA was stored as an integer
@@ -398,7 +399,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
                                     rasterToMatch = rtm,
                                     studyArea = studyArea,
                                     filename2 = NULL,
-                                    method = "bilinear")
+                                    method = "bilinear", 
+                                    useCache = FALSE)
     medianVals <- median(yearRasResampled[], na.rm = TRUE)
     if (!is.null(yearRasResampled[is.na(yearRasResampled) & !is.na(rasterToMatch)])) {
         yearRasResampled[is.na(yearRasResampled) & !is.na(rasterToMatch)] <- medianVals
