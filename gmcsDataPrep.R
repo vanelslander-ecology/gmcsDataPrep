@@ -126,7 +126,7 @@ Init <- function(sim) {
 prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
                           PSPclimData, useHeight, biomassModel,
                           PSPperiod, minDBH) {
-  browser()
+
   #Crop points to studyArea
   tempSA <- spTransform(x = studyAreaPSP, CRSobj = crs(PSPgis)) %>%
     st_as_sf(.)
