@@ -387,12 +387,14 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
                              " for this specific study area is all NA. Using previous years' raster ("
                              , names(stack[[currentRas - 1]]), ")")))
       currentRas <- currentRas - 1
-      yearRas <- prepClimateRasters(currentRas,
-                                    stack,
-                                    isATA,
-                                    rtm,
-                                    rasterToMatch)
     }
+
+    #Previously this happened in function 'prepClimateRasters'. With changes to reproducible, it was redundant
+    if (isATA == TRUE) {
+      #ATA was stored as an integer
+      yearRas[] <- yearRas[]/1000
+    }
+
     yearRasResampled <- postProcess(yearRas,
                                     rasterToMatch = rtm,
                                     studyArea = studyArea,
