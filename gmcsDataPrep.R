@@ -364,67 +364,73 @@ gmcsModelBuild <- function(PSPmodelData, type = "growth") {
 
 }
 
-resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm) {
-# Restructured to test time for number of characters (entering time as XX or YYYY)
-    if (nchar(time) <= 3){
-  time <- time + 2001
-  message(paste0("Time entered is < 1900. Temporarily converting your current time as ",
-                 crayon::yellow("time + 2001"),
-                 "(year of Knn data collection). The current time is now ", time, ".",
-                 " \nIf the simulation is set up for more than 1000 years,\nplease provide the start and end time as ",
-                 crayon::yellow("YYYY")))
-    }
+resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClimateRas = P(sim)$cacheClimateRas) {
+  # Restructured to test time for number of characters (entering time as XX or YYYY)
+  if (nchar(time) <= 3){
+    time <- time + 2001 #2001 is purely arbirtary for Tati's sake due to kNN  - boo relative years
+    message(paste0("Time entered is < 1900. Temporarily converting your current time as ",
+                   crayon::yellow("time + 2001"),
+                   "(year of Knn data collection). The current time is now ", time, ".",
+                   " \nIf the simulation is set up for more than 1000 years,\nplease provide the start and end time as ",
+                   crayon::yellow("YYYY")))
+  }
 
   currentRas <- grep(pattern = time, x = names(stack))
+
   if (length(currentRas) > 0) {
-    yearRas <- prepClimateRasters(currentRas,
-                                  stack,
-                                  isATA,
-                                  rtm,
-                                  rasterToMatch)
+
+    yearRas <- postProcess(stack[[currentRas]],
+                           rasterToMatch = rtm,
+                           studyArea = studyArea,
+                           filename2 = paste0(currentRas,'_reproj.tif'),
+                           method = "bilinear",
+                           useCache = cacheClimateRas)
+
     while (all(is.na(yearRas[]))){
       message(crayon::yellow(paste0(names(yearRas),
-                             " for this specific study area is all NA. Using previous years' raster ("
-                             , names(stack[[currentRas - 1]]), ")")))
+                                    " for this specific study area is all NA. Using previous years' raster ("
+                                    , names(stack[[currentRas - 1]]), ")")))
       currentRas <- currentRas - 1
-      yearRas <- prepClimateRasters(currentRas,
-                                    stack,
-                                    isATA,
-                                    rtm,
-                                    rasterToMatch)
+      yearRas <- postProcess(stack[[currentRas]],
+                             rasterToMatch = rtm,
+                             studyArea = studyArea,
+                             filename2 = paste0(currentRas,'_reproj.tif'),
+                             method = "bilinear",
+                             useCache =  cacheClimateRas)
     }
-    yearRasResampled <- postProcess(yearRas,
-                                    rasterToMatch = rtm,
-                                    studyArea = studyArea,
-                                    filename2 = NULL,
-                                    method = "bilinear",
-                                    useCache = FALSE)
-    medianVals <- median(yearRasResampled[], na.rm = TRUE)
-    if (!is.null(yearRasResampled[is.na(yearRasResampled) & !is.na(rasterToMatch)])) {
-        yearRasResampled[is.na(yearRasResampled) & !is.na(rasterToMatch)] <- medianVals
+
+    if (isATA == TRUE) {
+      #ATA was stored as an integer
+      yearRas[] <- yearRas[]/1000
     }
-    return(yearRasResampled)
+
+    #this is a safety catch in case there are NAs due to the resampling --- there shouldn't be with new postProcess changes
+    medianVals <- median(yearRas[], na.rm = TRUE)
+    if (!is.null(yearRas[is.na(yearRas) & !is.na(rasterToMatch)])) {
+      yearRas[is.na(yearRas) & !is.na(rasterToMatch)] <- medianVals
+    }
+    return(yearRas)
   } else {
     if (time > 2100){
       message(crayon::yellow(paste0("The current time (", time,") is > 2100 and there are no predictions for this year.
                                     Using climate predictions for 2100")))
       currentRas <- raster::nlayers(stack)
-      yearRas <- prepClimateRasters(currentRas,
-                                    stack,
-                                    isATA,
-                                    rtm,
-                                    rasterToMatch)
+      yearRas <- postProcess(stack[[currentRas]],
+                             rasterToMatch = rtm,
+                             studyArea = studyArea,
+                             filename2 = paste0(currentRas,'_reproj.tif'),
+                             method = "bilinear",
+                             useCache =  cacheClimateRas)
     } else {
       message(red(paste0("no climate effect for year ", time)))
-      #This has not been tested.
+      #assume it is not yet 2011, pass raster with all 0s
       yearRas <- rasterToMatch #Make a NULL raster for no climate effect
-      yearRas[] <- 0
+      yearRas[!is.na(rasterToMatch)] <- 0
     }
   }
 
   return(yearRas)
 }
-
 
 .inputObjects <- function(sim) {
 
