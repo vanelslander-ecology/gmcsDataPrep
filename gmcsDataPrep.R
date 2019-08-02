@@ -390,7 +390,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
     yearRas <- postProcess(stack[[currentRas]],
                            rasterToMatch = rtm,
                            studyArea = studyArea,
-                           filename2 = paste0(currentRas,'_reproj.tif'),
+                           filename2 = NULL,
                            method = "bilinear",
                            useCache = cacheClimateRas)
 
@@ -402,7 +402,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
       yearRas <- postProcess(stack[[currentRas]],
                              rasterToMatch = rtm,
                              studyArea = studyArea,
-                             filename2 = paste0(currentRas,'_reproj.tif'),
+                             filename2 = NULL,
                              method = "bilinear",
                              useCache =  cacheClimateRas)
     }
@@ -426,7 +426,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
       yearRas <- postProcess(stack[[currentRas]],
                              rasterToMatch = rtm,
                              studyArea = studyArea,
-                             filename2 = paste0(currentRas,'_reproj.tif'),
+                             filename2 = NULL,
                              method = "bilinear",
                              useCache =  cacheClimateRas)
     } else {
