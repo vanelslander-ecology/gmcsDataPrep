@@ -15,7 +15,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list('data.table', 'sf', 'sp', 'raster', 'nlme', 'crayon', 'glmm',"PredictiveEcology/pemisc@development"),
+  reqdPkgs = list('data.table', 'sf', 'sp', 'raster', 'nlme', 'crayon', 'glmm',"PredictiveEcology/LandR@development"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".useCache", "logical", FALSE, NA, NA, desc = "Should this entire module be run with caching activated?
@@ -53,7 +53,8 @@ defineModule(sim, list(
                  desc = "annual projected mean climate moisture deficit",
                  sourceURL = "https://drive.google.com/open?id=1Dfs01wRMy41wZ8Ft5iexjOII1rWR6K2y"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
-                 desc = "template raster for ATA and CMI")
+                 desc = "template raster for ATA and CMI"),
+    expectsInput(objectName = "CMInormal", objectClass = "RasterLayer", desc = "Climate Moisture Index Normals from 1950-2010")
   ),
   outputObjects = bind_rows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
@@ -349,18 +350,18 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
 gmcsModelBuild <- function(PSPmodelData, type = "growth") {
 
   #Center data on the mean
-  PSPmodelData$mLogAge <- PSPmodelData$logAge - mean(PSPmodelData$logAge)
-  PSPmodelData$mCMI <- PSPmodelData$CMI - mean(PSPmodelData$CMI)
-  PSPmodelData$mATA <- PSPmodelData$ATA - mean(PSPmodelData$ATA)
+  # PSPmodelData$mLogAge <- PSPmodelData$logAge - mean(PSPmodelData$logAge)
+  # PSPmodelData$mCMI <- PSPmodelData$CMI - mean(PSPmodelData$CMI)
+  # PSPmodelData$mATA <- PSPmodelData$ATA - mean(PSPmodelData$ATA)
 
   #This is a long and silly way of substituting the dependent variable for the function arg. Improve?
   if (type == 'growth') {
-    gmcsModel <- lme(growth ~ mLogAge + mCMI + mATA + mLogAge:mCMI + mCMI:mATA + mATA:mLogAge,
+    gmcsModel <- lme(growth ~ logAge + CMI + ATA + logAge:CMI + CMI:ATA + ATA:logAge,
                      random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)
   } else {
     #26-04-2019 decided to remove zero values by adding the minimum non-zero value, then log-transforming.
     PSPmodelData$logMortality <- log(PSPmodelData$mortality + min(PSPmodelData$mortality[PSPmodelData$mortality > 0]))
-    gmcsModel <- lme(logMortality ~ mLogAge + mCMI + mATA + mLogAge:mCMI + mCMI:mATA + mATA:mLogAge,
+    gmcsModel <- lme(logMortality ~ logAge + CMI + ATA + logAge:CMI + CMI:ATA + ATA:logAge,
                      random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)
   }
 
@@ -516,7 +517,19 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
 
   if (!suppliedElsewhere("rasterToMatch", sim)) {
     message("rasterToMatch not supplied. Generating from LCC2005")
-    sim$rasterToMatch <- prepInputsLCC(studyArea = studyArea, filename2 = NULL, destinationPath = dPath)
+    sim$rasterToMatch <- prepInputsLCC(studyArea = sim$studyArea, filename2 = NULL, destinationPath = dPath)
+  }
+
+  if (!suppliedElsewhere("CMInormal", sim)) {
+    sim$CMInormal <- prepInputs(targetFile = 'normalCMI_10km.tif',
+                                url = 'https://drive.google.com/open?id=1iW4PhYcKzd8OM3PgGtKsu9fCveqofhya',
+                                destinationPath = dPath,
+                                fun = "raster",
+                                studyArea = sim$studyArea,
+                                rasterToMatch = sim$rasterToMatch,
+                                overwrite = TRUE,
+                                useCache = TRUE,
+                                method = 'bilinear')
   }
   return(invisible(sim))
 }

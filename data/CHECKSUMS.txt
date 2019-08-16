@@ -9,3 +9,4 @@
 "CanCMI_2011-2100.zip" "2e3deaa2a94ed668" "12283672" "xxhash64"
 "CanCMI_2011-2100.grd" "8b4a056820033b08" "2152" "xxhash64"
 "CanCMI_2011-2100.gri" "4ffcb1d0120f7249" "95026320" "xxhash64"
+"normalCMI_10km.tif" "3cb3387bcfd141c6" "156198" "xxhash64"

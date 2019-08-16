@@ -19,15 +19,8 @@ parameters <- list(
 
 # studyArea <- shapefile("C:/Ian/PracticeDirectory/scfm/RIA_studyArea.shp")
 # rasterToMatch <- raster("C:/Ian/PracticeDirectory/scfm/RIA_studyAreaRas.tif")
-NWT.url <- "https://drive.google.com/open?id=1LUxoY2-pgkCmmNH5goagBp3IMpj6YrdU"
-studyArea <- prepInputs(url = NWT.url,
-                   destinationPath = "C:/Ian/PracticeDirectory",
-                   userTags = "edeSA",
-                   omitArgs = c("destinationPath"))
-rasterToMatch <- raster("C:/Ian/PracticeDirectory/rasterToMatch.tif")
-
-
-
+studyArea <- LandR::randomStudyArea(size = 10000*6.25*10000)
+rasterToMatch <- LandR::prepInputsLCC(studyArea = studyArea, destinationPath = tempdir())
 studyAreaPSP <- shapefile("C:/Ian/Data/Canada Ecosystem/Ecozones/ecozones.shp") %>%
   spTransform(., CRSobj = crs(rasterToMatch))
 
