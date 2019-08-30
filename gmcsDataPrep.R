@@ -67,10 +67,8 @@ defineModule(sim, list(
     createsOutput(objectName = "gcsModel", objectClass = "ModelObject?",
                   desc = "growth mixed effect model with normalized log(age), ATA, and CMI as predictors"),
     createsOutput(objectName = "mcsModel", objectClass = "ModelObject?",
-                  desc = "mortality mixed effect model with normalized log(age), ATA, and CMI as predictors"),
-    createsOutput(objectName = "centeringVec", objectClass = "numeric",
-                  desc = "the means of the model data used to center the variables and back-transform mortality, for use in LandR.CS")
-  )
+                  desc = "mortality mixed effect model with normalized log(age), ATA, and CMI as predictors")
+    )
 ))
 
 ## event types
@@ -112,7 +110,7 @@ Init <- function(sim) {
     stop("Please supply P(sim)$PSPperiod of length 2 or greater")
   }
 
-  PSPmodelData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
+  sim$PSPmodelData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
                                     PSPgis = sim$PSPgis,
                                     PSPmeasure = sim$PSPmeasure,
                                     PSPplot = sim$PSPplot,
@@ -122,9 +120,6 @@ Init <- function(sim) {
                                     PSPperiod = P(sim)$PSPperiod,
                                     minDBH = P(sim)$minDBH,
                             userTags = c("gmcsDataPrep", "prepModelData"))
-
-  sim$PSPmodelData <- PSPmodelData[[1]]
-  sim$centeringVec <- PSPmodelData[[2]]
 
   sim$gcsModel <- gmcsModelBuild(sim$PSPmodelData, type = "growth")
   sim$mcsModel <- gmcsModelBuild(sim$PSPmodelData, type = "mortality")
@@ -193,12 +188,11 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   #Restrict to trees > 10 DBH (P) This gets rid of some big trees. Some 15 metres tall
   PSPmeasure <- PSPmeasure[DBH >= minDBH,]
 
-  #Calculate Climate Means
-  mCMI <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("mCMI" = mean(CMI)), OrigPlotID1]
-  mMAT <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("mMAT" = mean(MAT)), OrigPlotID1]
+  #Cget climate data
+  climate <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("CMI" = mean(CMI), "MAT" = mean(MAT)), OrigPlotID1]
 
-  PSPplot <- PSPplot[mCMI, on = "OrigPlotID1"]
-  PSPplot <- PSPplot[mMAT, on = "OrigPlotID1"]
+  PSPplot <- PSPplot[climate, on = "OrigPlotID1"]
+
 
   #Calculate biomass
   tempOut <- biomassCalculation(species = PSPmeasure$newSpeciesName,
@@ -237,9 +231,9 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
       CMI <- mean(Clim$CMI[Clim$Year >= p$MeasureYear[i] &
                              Clim$Year <= p$MeasureYear[i+1]])
       ACMI <- mean(Clim$CMI[Clim$Year >= p$MeasureYear[i] &
-                             Clim$Year <= p$MeasureYear[i+1]]) - p$mCMI[1]
+                             Clim$Year <= p$MeasureYear[i+1]]) - p$CMI[1]
       ATA <- mean(Clim$MAT[Clim$Year >= p$MeasureYear[i] &
-                             Clim$Year <= p$MeasureYear[i+1]]) - p$mMAT[1]
+                             Clim$Year <= p$MeasureYear[i+1]]) - p$MAT[1]
       AT <- mean(Clim$MAT[Clim$Year >= p$MeasureYear[i] &
                              Clim$Year <= p$MeasureYear[i+1]])
       period <- paste0(P$MeasureYear[i], "-", P$MeasureYear[i+1])
@@ -338,21 +332,11 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
                                    'logAge' = mean(logAge), "periodLength" = mean(periodLength),
                                    'year' = mean(year), 'plotSize' = mean(plotSize)), by = c("OrigPlotID1", "period")]
 
-  #Need means of ATA, CMI, and logAge to center model; minimum non-zero mortality for back transformation
-  centeringVec <- c("logAge" = mean(PSPmodelData$logAge),
-                       "ATA" = mean(PSPmodelData$ATA),
-                       "CMI" = mean(PSPmodelData$CMI),
-                       "minMort" = min(PSPmodelData$mortality[PSPmodelData$mortality > 0]))
-
-  return(list(PSPmodelData, centeringVec))
+  return(PSPmodelData)
 }
 
 gmcsModelBuild <- function(PSPmodelData, type = "growth") {
 
-  #Center data on the mean
-  # PSPmodelData$mLogAge <- PSPmodelData$logAge - mean(PSPmodelData$logAge)
-  # PSPmodelData$mCMI <- PSPmodelData$CMI - mean(PSPmodelData$CMI)
-  # PSPmodelData$mATA <- PSPmodelData$ATA - mean(PSPmodelData$ATA)
 
   #This is a long and silly way of substituting the dependent variable for the function arg. Improve?
   if (type == 'growth') {
@@ -366,8 +350,8 @@ gmcsModelBuild <- function(PSPmodelData, type = "growth") {
   }
 
   #Yong's original multivariate model (year substituted for ATA)
-  # gmcsModel1 <- lme(cbind(netBiomass, growth, mortality) ~ mLogAge + mCMI + mATA + mLogAge:mCMI + mCMI:mATA + mATA
-                      #mLogAge, random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength),
+  # gmcsModel1 <- lme(cbind(netBiomass, growth, mortality) ~ logAge + CMI + ATA + logAge:CMI + CMI:ATA + ATA
+                      #logAge, random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength),
                       #data = PSPmodelData)
   return(gmcsModel)
 
