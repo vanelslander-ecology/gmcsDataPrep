@@ -346,17 +346,17 @@ gmcsModelBuild <- function(PSPmodelData, type = "growth") {
     gmcsModel <- glmmPQL(growth ~ logAge*(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
                          weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData, family = "Gamma"(link='log'))
 
-      } else {
-        gmcsModel <- gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
-                                    re(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
-                                  sigma.formula = ~ATA + logAge + ATA:logAge,
-                                  nu.formula = ~logAge + CMI,
-                                  tau.formula = ~logAge,
-                                  family = ZISICHEL, data = PSPmodelData)
-        while (!gmcsModel$converged & i <= 2) {
-          i <- i+1
-          gmcsModel <- refit(gmcsModel)
-        }
+  } else {
+    gmcsModel <- gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
+                          re(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
+                        sigma.formula = ~ATA + logAge + ATA:logAge,
+                        nu.formula = ~logAge + CMI,
+                        tau.formula = ~logAge,
+                        family = ZISICHEL, data = PSPmodelData)
+    while (!gmcsModel$converged & i <= 2) {
+      i <- i+1
+      gmcsModel <- refit(gmcsModel)
+    }
   }
 
   #Yong's original multivariate model (year substituted for ATA)
