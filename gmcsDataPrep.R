@@ -15,7 +15,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list('data.table', 'sf', 'sp', 'raster', 'nlme', 'crayon', 'glmm',"PredictiveEcology/LandR@development"),
+  reqdPkgs = list('data.table', 'sf', 'sp', 'raster', 'nlme', 'crayon', 'glmm',"PredictiveEcology/LandR@development", "MASS"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".useCache", "logical", FALSE, NA, NA, desc = "Should this entire module be run with caching activated?
@@ -189,6 +189,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   PSPmeasure <- PSPmeasure[DBH >= minDBH,]
 
   #Cget climate data
+  browser()# check what this is doing - the CMI values should all be identical, mean is just to subset
   climate <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("CMI" = mean(CMI), "MAT" = mean(MAT)), OrigPlotID1]
 
   PSPplot <- PSPplot[climate, on = "OrigPlotID1"]
@@ -340,13 +341,22 @@ gmcsModelBuild <- function(PSPmodelData, type = "growth") {
 
   #This is a long and silly way of substituting the dependent variable for the function arg. Improve?
   if (type == 'growth') {
-    gmcsModel <- lme(growth ~ logAge + CMI + ATA + logAge:CMI + CMI:ATA + ATA:logAge,
-                     random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)
-  } else {
-    #26-04-2019 decided to remove zero values by adding the minimum non-zero value, then log-transforming.
-    PSPmodelData$logMortality <- log(PSPmodelData$mortality + min(PSPmodelData$mortality[PSPmodelData$mortality > 0]))
-    gmcsModel <- lme(logMortality ~ logAge + CMI + ATA + logAge:CMI + CMI:ATA + ATA:logAge,
-                     random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)
+
+    #30/08/2019 decided to use gamma with log link after comparing among several models - solved predictions with young cohorts
+    gmcsModel <- glmmPQL(growth ~ logAge*(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
+                         weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData, family = "Gamma"(link='log'))
+
+      } else {
+        gmcsModel <- gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
+                                    re(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
+                                  sigma.formula = ~ATA + logAge + ATA:logAge,
+                                  nu.formula = ~logAge + CMI,
+                                  tau.formula = ~logAge,
+                                  family = ZISICHEL, data = PSPmodelData)
+        while (!gmcsModel$converged & i <= 2) {
+          i <- i+1
+          gmcsModel <- refit(gmcsModel)
+        }
   }
 
   #Yong's original multivariate model (year substituted for ATA)
