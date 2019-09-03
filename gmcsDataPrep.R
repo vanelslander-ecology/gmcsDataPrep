@@ -345,16 +345,15 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   return(PSPmodelData)
 }
 
-gmcsModelBuild <- function(PSPmodelData, type = "growth") {
+gmcsModelBuild <- function(PSPmodelData, type = "growth",  mortModel = P(sim)$mortModel, growthModel = P(sim)$growthModel) {
 
   if (type == 'growth') {
 
-    #30/08/2019 decided to use gamma with log link after comparing among several models - solved predictions with young cohorts
-    gmcsModel <- eval(P(sim)$growthModel)
+    gmcsModel <- Cache(eval, growthModel, userTags = c("gmcsDataPrep", "growthModel"))
 
   } else {
 
-    gmcsModel <- eval(P(sim)$mortalityModel)
+    gmcsModel <- Cache(eval, mortModel, userTags = c("gmcsDataPrep", "mortModel"))
 
     #to ensure convergence, test whether quoted model is the default first. How to ensure convergence for user-passed models?
     defaultModel <- quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
@@ -364,7 +363,7 @@ gmcsModelBuild <- function(PSPmodelData, type = "growth") {
                                  tau.formula = ~logAge,
                                  family = ZISICHEL, data = PSPmodelData))
 
-    if (P(sim)$mortalityModel == defaultModel ){
+    if (mortModel == defaultModel){
       i <- i
       while (!gmcsModel$converged & i <= 2) {
         i <- i+1
