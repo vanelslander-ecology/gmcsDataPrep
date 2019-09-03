@@ -26,35 +26,46 @@ defineModule(sim, list(
                     so absence of entries < min(DBH) does not equate to absence of trees."),
     defineParameter("useHeight", "logical", FALSE, NA, NA, desc = "Should height be used to calculate biomass (in addition to DBH).
                     Don't use if studyAreaPSP includes Alberta"),
-    defineParameter("biomassModel", "character", "Lambert2005", NA, NA, desc =  "The model used to calculate biomass from DBH. Can be either 'Lambert2005' or 'Ung2008'"),
+    defineParameter("biomassModel", "character", "Lambert2005", NA, NA, desc =  "The model used to calculate biomass from DBH.
+                    Can be either 'Lambert2005' or 'Ung2008'"),
     defineParameter("cacheClimateRas", "logical", TRUE, NA, NA, desc = "should reprojection of climate rasters be cached every year?
-    This will result in potentially > 100 rasters being cached")
+    This will result in potentially > 100 rasters being cached"),
+    defineParameter("growthModel", class = "call", quote(glmmPQL(growth ~ logAge*(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
+                                    weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData, family = "Gamma"(link='log'))),
+                 NA, NA, desc = "Quoted model used to predict growth in PSP data as a function of logAge, CMI, ATA, and
+                 their interactions, with PlotID as a random effect"),
+    defineParameter("mortalityModel", class = "call", quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
+                                                                   re(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
+                                                                   sigma.formula = ~ATA + logAge + ATA:logAge, nu.formula = ~logAge + CMI,
+                                                                   tau.formula = ~logAge, family = ZISICHEL, data = PSPmodelData)),
+                    NA, NA, desc = "Quoted model used to predict mortality in PSP data as a function of logAge, CMI, ATA, and
+                 their interactions, with PlotID as a random effect. Defaults to zero-inflated inverse gaussian glm")
   ),
   inputObjects = bind_rows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
-    expectsInput(objectName = 'PSPmeasure', objectClass = 'data.table',
-                 desc = "PSP data for individual measures", sourceURL = NA),
-    expectsInput(objectName = 'PSPplot', objectClass = 'data.table',
-                 desc = "PSP data for each plot", sourceURL = NA),
-    expectsInput(objectName = 'PSPgis', objectClass = 'data.table',
-                 desc = "PSP plot data as sf object", sourceURL = NA),
-    expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame",
-                 desc = "this area will be used to crop climate rasters", sourceURL = NA),
-    expectsInput(objectName = 'studyAreaPSP', objectClass = 'SpatialPolygonsDataFrame',
-                 desc = "this area will be used to subset PSP plots before building the statistical model. Currently PSP datasets with repeat measures exist only for Saskatchewan, Alberta, and Boreal British Columbia",
-                 sourceURL = NA),
-    expectsInput(objectName = "PSPclimData", objectClass = "data.table",
-                 desc = "climate data for each PSP",
-                 sourceURL = "https://drive.google.com/open?id=1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG"),
     expectsInput(objectName = "ATAstack", objectClass = "RasterStack",
                  desc = "annual projected mean annual temperature anomalies",
                  sourceURL = "https://drive.google.com/open?id=1mNdLnQv09N0mf5e5v8D8rIfsnLovpdyE"),
     expectsInput(objectName = "CMIstack", objectClass = "RasterStack",
                  desc = "annual projected mean climate moisture deficit",
                  sourceURL = "https://drive.google.com/open?id=1Dfs01wRMy41wZ8Ft5iexjOII1rWR6K2y"),
+    expectsInput(objectName = "CMInormal", objectClass = "RasterLayer", desc = "Climate Moisture Index Normals from 1950-2010"),
+    expectsInput(objectName = 'PSPmeasure', objectClass = 'data.table',
+                 desc = "PSP data for individual measures", sourceURL = NA),
+    expectsInput(objectName = 'PSPplot', objectClass = 'data.table',
+                 desc = "PSP data for each plot", sourceURL = NA),
+    expectsInput(objectName = 'PSPgis', objectClass = 'data.table',
+                 desc = "PSP plot data as sf object", sourceURL = NA),
+    expectsInput(objectName = "PSPclimData", objectClass = "data.table",
+                 desc = "climate data for each PSP",
+                 sourceURL = "https://drive.google.com/open?id=1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
                  desc = "template raster for ATA and CMI"),
-    expectsInput(objectName = "CMInormal", objectClass = "RasterLayer", desc = "Climate Moisture Index Normals from 1950-2010")
+    expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame",
+                 desc = "this area will be used to crop climate rasters", sourceURL = NA),
+    expectsInput(objectName = 'studyAreaPSP', objectClass = 'SpatialPolygonsDataFrame',
+                 desc = "this area will be used to subset PSP plots before building the statistical model. Currently PSP datasets with repeat measures exist only for Saskatchewan, Alberta, and Boreal British Columbia",
+                 sourceURL = NA),
   ),
   outputObjects = bind_rows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
@@ -338,29 +349,33 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
 
 gmcsModelBuild <- function(PSPmodelData, type = "growth") {
 
-
-  #This is a long and silly way of substituting the dependent variable for the function arg. Improve?
   if (type == 'growth') {
 
     #30/08/2019 decided to use gamma with log link after comparing among several models - solved predictions with young cohorts
-    gmcsModel <- glmmPQL(growth ~ logAge*(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
-                         weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData, family = "Gamma"(link='log'))
+    gmcsModel <- eval(P(sim)$growthModel)
 
   } else {
-    gmcsModel <- gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
-                          re(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
-                        sigma.formula = ~ATA + logAge + ATA:logAge,
-                        nu.formula = ~logAge + CMI,
-                        tau.formula = ~logAge,
-                        family = ZISICHEL, data = PSPmodelData)
-    while (!gmcsModel$converged & i <= 2) {
-      i <- i+1
-      gmcsModel <- refit(gmcsModel)
+
+    gmcsModel <- eval(P(sim)$mortalityModel)
+
+    #to ensure convergence, test whether quoted model is the default first. How to ensure convergence for user-passed models?
+    defaultModel <- quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
+                                   re(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
+                                 sigma.formula = ~ATA + logAge + ATA:logAge,
+                                 nu.formula = ~logAge + CMI,
+                                 tau.formula = ~logAge,
+                                 family = ZISICHEL, data = PSPmodelData))
+
+    if (P(sim)$mortalityModel == defaultModel ){
+      i <- i
+      while (!gmcsModel$converged & i <= 2) {
+        i <- i+1
+        gmcsModel <- refit(gmcsModel)
+      }
     }
   }
-
-  #Yong's original multivariate model (year substituted for ATA)
-  # gmcsModel1 <- lme(cbind(netBiomass, growth, mortality) ~ logAge + CMI + ATA + logAge:CMI + CMI:ATA + ATA
+  # for reference, Yong's original multivariate model (year substituted for ATA)
+  # gmcsModel <- lme(cbind(netBiomass, growth, mortality) ~ logAge + CMI + ATA + logAge:CMI + CMI:ATA + ATA
                       #logAge, random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength),
                       #data = PSPmodelData)
   return(gmcsModel)
