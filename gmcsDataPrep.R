@@ -199,8 +199,6 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   #Restrict to trees > 10 DBH (P) This gets rid of some big trees. Some 15 metres tall
   PSPmeasure <- PSPmeasure[DBH >= minDBH,]
 
-  #Cget climate data
-  browser()# check what this is doing - the CMI values should all be identical, mean is just to subset
   climate <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("CMI" = mean(CMI), "MAT" = mean(MAT)), OrigPlotID1]
 
   PSPplot <- PSPplot[climate, on = "OrigPlotID1"]
