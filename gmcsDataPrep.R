@@ -132,8 +132,12 @@ Init <- function(sim) {
                                     minDBH = P(sim)$minDBH,
                             userTags = c("gmcsDataPrep", "prepModelData"))
 
-  sim$gcsModel <- gmcsModelBuild(sim$PSPmodelData, model = P(sim)$growthModel, type = "growth")
-  sim$mcsModel <- gmcsModelBuild(sim$PSPmodelData, model = P(sim)$mortModel, type = "mortality")
+  sim$gcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
+                                 model = P(sim)$growthModel,
+                                 type = "growth")
+  sim$mcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
+                                 model = P(sim)$mortModel,
+                                 type = "mortality")
 
   return(invisible(sim))
 }
