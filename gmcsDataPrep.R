@@ -32,13 +32,14 @@ defineModule(sim, list(
     defineParameter("cacheClimateRas", "logical", TRUE, NA, NA, desc = "should reprojection of climate rasters be cached every year?
     This will result in potentially > 100 rasters being cached"),
     defineParameter("growthModel", class = "call", quote(glmmPQL(growth ~ logAge*(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
-                                    weights = scale(PSPmodelData$plotSize^0.5 * PSPmodelData$periodLength, center = FALSE), data = PSPmodelData, family = "Gamma"(link='log'))),
+                                    weights = scale(PSPmodelData$plotSize^0.5 * PSPmodelData$periodLength, center = FALSE),
+                                    data = PSPmodelData, family = "Gamma"(link='log'))),
                  NA, NA, desc = "Quoted model used to predict growth in PSP data as a function of logAge, CMI, ATA, and
                  their interactions, with PlotID as a random effect"),
-    defineParameter("mortalityModel", class = "call", quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
-                                                                   re(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
-                                                                   sigma.formula = ~ATA + logAge + ATA:logAge, nu.formula = ~logAge + CMI,
-                                                                   tau.formula = ~logAge, family = ZISICHEL, data = PSPmodelData)),
+    defineParameter("mortalityModel", class = "call",
+                    quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
+                                   re(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
+                                 sigma.formula = ~logAge + ATA,  nu.formula = ~logAge, family = ZAIG, data = PSPmodelData)),
                     NA, NA, desc = "Quoted model used to predict mortality in PSP data as a function of logAge, CMI, ATA, and
                  their interactions, with PlotID as a random effect. Defaults to zero-inflated inverse gaussian glm")
   ),
@@ -357,16 +358,16 @@ gmcsModelBuild <- function(PSPmodelData, model, type) {
     gmcsModel <- Cache(eval, model, envir = environment(), userTags = c("gmcsDataPrep", "growthModel"))
 
   } else {
+    assign(x = 'PSPmodelData', value = PSPmodelData, envir = globalenv()) #THIS IS A DUMB FIX
 
     gmcsModel <- Cache(eval, model, envir = environment(), userTags = c("gmcsDataPrep", "mortModel"))
 
     #to ensure convergence, test whether quoted model is the default first. How to ensure convergence for user-passed models?
     defaultModel <- quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
                                    re(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
-                                 sigma.formula = ~ATA + logAge + ATA:logAge,
-                                 nu.formula = ~logAge + CMI,
-                                 tau.formula = ~logAge,
-                                 family = ZISICHEL, data = PSPmodelData))
+                                 sigma.formula = ~logAge + ATA,
+                                 nu.formula = ~logAge,
+                                 family = ZAIG, data = PSPmodelData))
 
     if (model == defaultModel){
       i <- i
