@@ -31,7 +31,7 @@ defineModule(sim, list(
     defineParameter("cacheClimateRas", "logical", TRUE, NA, NA, desc = "should reprojection of climate rasters be cached every year?
     This will result in potentially > 100 rasters being cached"),
     defineParameter("growthModel", class = "call", quote(glmmPQL(growth ~ logAge*(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
-                                    weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData, family = "Gamma"(link='log'))),
+                                    weights = scale(PSPmodelData$plotSize^0.5 * PSPmodelData$periodLength, center = FALSE), data = PSPmodelData, family = "Gamma"(link='log'))),
                  NA, NA, desc = "Quoted model used to predict growth in PSP data as a function of logAge, CMI, ATA, and
                  their interactions, with PlotID as a random effect"),
     defineParameter("mortalityModel", class = "call", quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
@@ -136,7 +136,7 @@ Init <- function(sim) {
                                  model = P(sim)$growthModel,
                                  type = "growth")
   sim$mcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
-                                 model = P(sim)$mortModel,
+                                 model = P(sim)$mortalityModel,
                                  type = "mortality")
 
   return(invisible(sim))
