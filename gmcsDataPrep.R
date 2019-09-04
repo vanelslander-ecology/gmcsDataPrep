@@ -349,11 +349,11 @@ gmcsModelBuild <- function(PSPmodelData, model, type) {
 
   if (type == 'growth') {
 
-    gmcsModel <- Cache(eval, growthModel, userTags = c("gmcsDataPrep", "growthModel"))
+    gmcsModel <- Cache(eval, model, userTags = c("gmcsDataPrep", "growthModel"))
 
   } else {
 
-    gmcsModel <- Cache(eval, mortModel, userTags = c("gmcsDataPrep", "mortModel"))
+    gmcsModel <- Cache(eval, model, userTags = c("gmcsDataPrep", "mortModel"))
 
     #to ensure convergence, test whether quoted model is the default first. How to ensure convergence for user-passed models?
     defaultModel <- quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
@@ -363,7 +363,7 @@ gmcsModelBuild <- function(PSPmodelData, model, type) {
                                  tau.formula = ~logAge,
                                  family = ZISICHEL, data = PSPmodelData))
 
-    if (mortModel == defaultModel){
+    if (model == defaultModel){
       i <- i
       while (!gmcsModel$converged & i <= 2) {
         i <- i+1
