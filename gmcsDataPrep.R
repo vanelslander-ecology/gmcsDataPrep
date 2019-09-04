@@ -370,7 +370,7 @@ gmcsModelBuild <- function(PSPmodelData, model, type) {
                                  family = ZAIG, data = PSPmodelData))
 
     if (model == defaultModel){
-      i <- i
+      i <- 1
       while (!gmcsModel$converged & i <= 2) {
         i <- i+1
         gmcsModel <- refit(gmcsModel)
