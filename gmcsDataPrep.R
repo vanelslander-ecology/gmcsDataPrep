@@ -132,8 +132,8 @@ Init <- function(sim) {
                                     minDBH = P(sim)$minDBH,
                             userTags = c("gmcsDataPrep", "prepModelData"))
 
-  sim$gcsModel <- gmcsModelBuild(sim$PSPmodelData, type = "growth")
-  sim$mcsModel <- gmcsModelBuild(sim$PSPmodelData, type = "mortality")
+  sim$gcsModel <- gmcsModelBuild(sim$PSPmodelData, model = P(sim)$growthModel, type = "growth")
+  sim$mcsModel <- gmcsModelBuild(sim$PSPmodelData, model = P(sim)$mortModel, type = "mortality")
 
   return(invisible(sim))
 }
@@ -345,7 +345,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   return(PSPmodelData)
 }
 
-gmcsModelBuild <- function(PSPmodelData, type = "growth",  mortModel = P(sim)$mortModel, growthModel = P(sim)$growthModel) {
+gmcsModelBuild <- function(PSPmodelData, model, type) {
 
   if (type == 'growth') {
 
@@ -373,11 +373,12 @@ gmcsModelBuild <- function(PSPmodelData, type = "growth",  mortModel = P(sim)$mo
   }
   # for reference, Yong's original multivariate model (year substituted for ATA)
   # gmcsModel <- lme(cbind(netBiomass, growth, mortality) ~ logAge + CMI + ATA + logAge:CMI + CMI:ATA + ATA
-                      #logAge, random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength),
-                      #data = PSPmodelData)
+  #logAge, random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength),
+  #data = PSPmodelData)
   return(gmcsModel)
 
 }
+
 
 resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClimateRas) {
   # Restructured to test time for number of characters (entering time as XX or YYYY)
