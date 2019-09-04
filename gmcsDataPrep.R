@@ -15,7 +15,8 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list('data.table', 'sf', 'sp', 'raster', 'nlme', 'crayon', 'glmm',"PredictiveEcology/LandR@development", "MASS"),
+  reqdPkgs = list('data.table', 'sf', 'sp', 'raster', 'nlme', 'crayon', 'glmm',
+                  "PredictiveEcology/LandR@development", "MASS", "gamlss"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".useCache", "logical", FALSE, NA, NA, desc = "Should this entire module be run with caching activated?
