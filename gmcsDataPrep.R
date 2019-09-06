@@ -357,25 +357,30 @@ gmcsModelBuild <- function(PSPmodelData, model, type) {
 
     gmcsModel <- Cache(eval, model, envir = environment(), userTags = c("gmcsDataPrep", "growthModel"))
 
-  } else {
+  } else  {
     assign(x = 'PSPmodelData', value = PSPmodelData, envir = globalenv()) #THIS IS A DUMB FIX
 
-    gmcsModel <- Cache(eval, model, envir = environment(), userTags = c("gmcsDataPrep", "mortModel"))
+    #This function exists to cache the converged model
+    foo <- function(mod, dat) {
 
-    #to ensure convergence, test whether quoted model is the default first. How to ensure convergence for user-passed models?
-    defaultModel <- quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
-                                   re(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
-                                 sigma.formula = ~logAge + ATA,
-                                 nu.formula = ~logAge,
-                                 family = ZAIG, data = PSPmodelData))
+      gmcsModel <- Cache(eval, mod, envir = environment(), userTags = c("gmcsDataPrep", "mortModel"))
+      defaultModel <- quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
+                                     re(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
+                                   sigma.formula = ~logAge + ATA,
+                                   nu.formula = ~logAge,
+                                   family = ZAIG, data = dat))
 
-    if (model == defaultModel){
-      i <- 1
-      while (!gmcsModel$converged & i <= 2) {
-        i <- i+1
-        gmcsModel <- refit(gmcsModel)
+      #to ensure convergence, test whether quoted mod is the default first. How to ensure convergence for user-passed models?
+      if (mod == defaultModel){
+        i <- 1
+        while (!gmcsModel$converged & i <= 2) {
+          i <- i+1
+          gmcsModel <- refit(gmcsModel)
+        }
       }
+      return(gmcsModel)
     }
+    gmcsModel <- Cache(foo, mod = model, dat = PSPmodelData)
   }
   # for reference, Yong's original multivariate model (year substituted for ATA)
   # gmcsModel <- lme(cbind(netBiomass, growth, mortality) ~ logAge + CMI + ATA + logAge:CMI + CMI:ATA + ATA
