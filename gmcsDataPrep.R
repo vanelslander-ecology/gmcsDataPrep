@@ -16,7 +16,7 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
   reqdPkgs = list('data.table', 'sf', 'sp', 'raster', 'nlme', 'crayon', 'glmm',
-                  "PredictiveEcology/LandR@development", "MASS", "gamlss"),
+                  "PredictiveEcology/LandR@development", "MASS", "gamlss", "LandR.CS"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".useCache", "logical", FALSE, NA, NA, desc = "Should this entire module be run with caching activated?
@@ -38,10 +38,11 @@ defineModule(sim, list(
                  their interactions, with PlotID as a random effect"),
     defineParameter("mortalityModel", class = "call",
                     quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
-                                   re(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
+                                   LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
                                  sigma.formula = ~logAge + ATA,  nu.formula = ~logAge, family = ZAIG, data = PSPmodelData)),
                     NA, NA, desc = "Quoted model used to predict mortality in PSP data as a function of logAge, CMI, ATA, and
-                 their interactions, with PlotID as a random effect. Defaults to zero-inflated inverse gaussian glm")
+                 their interactions, with PlotID as a random effect. Defaults to zero-inflated inverse gaussian glm that requires
+                    custom LandR.CS predict function to predict...for now")
   ),
   inputObjects = bind_rows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
@@ -365,7 +366,7 @@ gmcsModelBuild <- function(PSPmodelData, model, type) {
 
       gmcsModel <- Cache(eval, mod, envir = environment(), userTags = c("gmcsDataPrep", "mortModel"))
       defaultModel <- quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
-                                     re(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
+                                     LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
                                    sigma.formula = ~logAge + ATA,
                                    nu.formula = ~logAge,
                                    family = ZAIG, data = dat))
