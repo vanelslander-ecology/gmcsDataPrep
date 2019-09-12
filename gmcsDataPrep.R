@@ -360,7 +360,7 @@ gmcsModelBuild <- function(PSPmodelData, model, type) {
 
   } else  {
     assign(x = 'PSPmodelData', value = PSPmodelData, envir = globalenv()) #THIS IS A DUMB FIX
-
+    on.exit(rm(PSPmodelData, envir = globalenv()), add = TRUE)
     #This function exists to cache the converged model
     foo <- function(mod, dat) {
 
