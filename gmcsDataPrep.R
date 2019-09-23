@@ -47,7 +47,8 @@ defineModule(sim, list(
   inputObjects = bind_rows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = "ATAstack", objectClass = "RasterStack",
-                 desc = "annual projected mean annual temperature anomalies",
+                 desc = paste("annual projected mean annual temperature anomalies, units stored as tenth of a degree",
+                              "MULTIPLIED BY 1000 to save disk space, e.g. 3.32 degrees = 33200"),
                  sourceURL = "https://drive.google.com/open?id=1mNdLnQv09N0mf5e5v8D8rIfsnLovpdyE"),
     expectsInput(objectName = "CMIstack", objectClass = "RasterStack",
                  desc = "annual projected mean climate moisture deficit",
@@ -60,7 +61,9 @@ defineModule(sim, list(
     expectsInput(objectName = 'PSPgis', objectClass = 'data.table',
                  desc = "PSP plot data as sf object", sourceURL = NA),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table",
-                 desc = "climate data for each PSP",
+                 desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA",
+                              "this means temperature is represented as tenths of a degree, so 32.1 = 3.21 degrees",
+                              "you must supply two derived variables, CMI (MAT - Eref) and ATA (MAT - normalMAT)"),
                  sourceURL = "https://drive.google.com/open?id=1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
                  desc = "template raster for ATA and CMI"),
@@ -319,7 +322,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
       changes$period <- period
       changes$CMI <- CMI
       changes$CMIA <- ACMI
-      changes$ATA <- ATA
+      changes$ATA <- ATA/10 #ATA was stored as 1/10th of a degree. This is backtransforming to degrees
       changes$OrigPlotID1 <- p$OrigPlotID1[1]
       changes$year <- year
       changes$standAge <- p$baseSA[1] + P$MeasureYear[i+1] - P$MeasureYear[1]
@@ -433,8 +436,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
     }
 
     if (isATA == TRUE) {
-      #ATA was stored as an integer
-      yearRas[] <- yearRas[]/1000
+      #ATA was stored as an integer AND as tenth of a degree. So divide by 10000 to get actual degrees
+      yearRas[] <- yearRas[]/1000/10
     }
 
     #this is a safety catch in case there are NAs due to the resampling --- there shouldn't be with new postProcess changes
