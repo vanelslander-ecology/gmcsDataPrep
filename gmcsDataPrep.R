@@ -16,7 +16,7 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
   reqdPkgs = list('data.table', 'sf', 'sp', 'raster', 'nlme', 'crayon', 'glmm',
-                  "PredictiveEcology/LandR@development", "MASS", "gamlss", "LandR.CS"),
+                  "PredictiveEcology/LandR@development", "MASS", "gamlss", "LandR.CS", 'PredictiveEcology/pemisc@development'),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".useCache", "logical", FALSE, NA, NA, desc = "Should this entire module be run with caching activated?
@@ -42,17 +42,20 @@ defineModule(sim, list(
                                  sigma.formula = ~logAge + ATA,  nu.formula = ~logAge, family = ZAIG, data = PSPmodelData)),
                     NA, NA, desc = "Quoted model used to predict mortality in PSP data as a function of logAge, CMI, ATA, and
                  their interactions, with PlotID as a random effect. Defaults to zero-inflated inverse gaussian glm that requires
-                    custom LandR.CS predict function to predict...for now")
+                    custom LandR.CS predict function to predict...for now"),
+    defineParameter("GCM", "character", "CanESM2_RCP4.5", NA, NA,
+                    desc = paste("the global climate model and rcp scenario to use. Defaults to CanESM2_RCP4.5.",
+                                 "Currently the only other option is CCSM_RCP4.5"))
   ),
   inputObjects = bind_rows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = "ATAstack", objectClass = "RasterStack",
                  desc = paste("annual projected mean annual temperature anomalies, units stored as tenth of a degree",
                               "MULTIPLIED BY 1000 to save disk space, e.g. 3.32 degrees = 33200"),
-                 sourceURL = "https://drive.google.com/open?id=1mNdLnQv09N0mf5e5v8D8rIfsnLovpdyE"),
+                 sourceURL = NA),
     expectsInput(objectName = "CMIstack", objectClass = "RasterStack",
                  desc = "annual projected mean climate moisture deficit",
-                 sourceURL = "https://drive.google.com/open?id=1Dfs01wRMy41wZ8Ft5iexjOII1rWR6K2y"),
+                 sourceURL = NA),
     expectsInput(objectName = "CMInormal", objectClass = "RasterLayer", desc = "Climate Moisture Index Normals from 1950-2010"),
     expectsInput(objectName = 'PSPmeasure', objectClass = 'data.table',
                  desc = "PSP data for individual measures", sourceURL = NA),
@@ -515,12 +518,22 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
   }
 
   if (!suppliedElsewhere("ATAstack", sim)) {
-    #These should not be called using rasterToMatch unless you want 200 cliamte rasters all at once
-    #they need to be subset, resampled, and reprojected every year
-    sim$ATAstack <- prepInputs(archive = "CanATA_2011-2100.zip",
-                               targetFile = "CanATA_2011-2100.grd",
+    #These should not be called using rasterToMatch (stack, memory)
+    if (P(sim)$GCM == "CCSM_RCP4.5") {
+      ata.url <- 'https://drive.google.com/open?id=1IVyPaI7FKA4yDhsBbxuN7I6FgZmPWKe_'
+      ata.tf <- "Canada3ArcMinuteCCSM_ATA2011-2100.grd"
+      ata.arc <- 'Canada3ArcMinuteCCSM_ATA2011-2100.zip'
+    } else if (P(sim)$GCM == "CanESM2_RCP4.5") {
+      ata.url <- "https://drive.google.com/open?id=1WRsJGd99hbk2Rn-vu-8K1ZTk_xrIFH8m"
+      ata.tf <- "Canada3ArcMinute_ATA2011-2100.grd"
+      ata.arc <- 'Canada3ArcMinute_ATA2011-2100.zip'
+    } else {
+      stop("unrecognized GCM in P(sim)$GCM")
+    }
+    sim$ATAstack <- prepInputs(targetFile = ata.tf,
+                               archive = ata.arc,
                                alsoExtract = "similar",
-                               url = extractURL("ATAstack"),
+                               url = ata.url,
                                destinationPath = dPath,
                                fun = "raster::stack",
                                overwrite = TRUE,
@@ -529,12 +542,22 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
   }
 
   if (!suppliedElsewhere("CMIstack", sim)) {
-    #These should not be called with RasterToMatch -- each stack has 90 rasters and prepInputs isn't ready for stacks
-    #they need to be subset, resampled, and reprojected every year
-    sim$CMIstack <- prepInputs(targetFile = "CanCMI_2011-2100.grd",
-                               archive = "CanCMI_2011-2100.zip",
+    if (P(sim)$GCM == "CCSM_RCP4.5") {
+      cmi.url <- 'https://drive.google.com/open?id=1JCDg7xA5nNcacP2skPOJYSoV655wPXXF'
+      cmi.tf <- "Canada3ArcMinuteCCSM_CMI2011-2100.grd"
+      cmi.arc <- 'Canada3ArcMinuteCCSM_CMI2011-2100.zip'
+    } else if (P(sim)$GCM == "CanESM2_RCP4.5") {
+      cmi.url <- "https://drive.google.com/open?id=1MwhK3eD1W6u0AgFbRgVg7j-qqyk0-3yA"
+      cmi.tf <- "Canada3ArcMinute_CMI2011-2100.grd"
+      cmi.arc <- "Canada3ArcMinute_CMI2011-2100.zip"
+    } else {
+      stop("unrecognized GCM in P(sim)$GCM")
+    }
+    #These should not be called with RasterToMatch
+    sim$CMIstack <- prepInputs(targetFile = cmi.tf,
+                               archive = cmi.arc,
                                alsoExtract = "similar",
-                               url = extractURL("CMIstack"),
+                               url = cmi.url,
                                destinationPath = dPath,
                                fun = "raster::stack",
                                overwrite = TRUE,
@@ -548,15 +571,18 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
   }
 
   if (!suppliedElsewhere("CMInormal", sim)) {
-    sim$CMInormal <- prepInputs(targetFile = 'normalCMI_10km.tif',
-                                url = 'https://drive.google.com/open?id=1iW4PhYcKzd8OM3PgGtKsu9fCveqofhya',
+
+    sim$CMInormal <- prepInputs(targetFile = 'Canada3ArcMinute_normalCMI.grd',
+                                archive = 'Canada3ArcMinute_normalCMI.zip',
+                                url = 'https://drive.google.com/open?id=16YMgx9t2eW8-fT5YyW0xEbjKODYNCiys',
                                 destinationPath = dPath,
-                                fun = "raster",
+                                fun = "raster::raster",
                                 studyArea = sim$studyArea,
                                 rasterToMatch = sim$rasterToMatch,
                                 overwrite = TRUE,
-                                useCache = TRUE,
-                                method = 'bilinear')
+                                useCache = FALSE,
+                                method = 'bilinear',
+                                alsoExtract = "Canada3ArcMinute_normalCMI.gri")
   }
   return(invisible(sim))
 }
