@@ -109,10 +109,12 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
     prepRasters = {
       sim$ATA <- resampleStacks(stack = sim$ATAstack, time = time(sim), isATA = TRUE,
                                 studyArea = sim$studyArea, rtm = sim$rasterToMatch,
-                                cacheClimateRas = P(sim)$cacheClimateRas)
+                                cacheClimateRas = P(sim)$cacheClimateRas,
+                                firstYear = P(sim)$yearOfFirstClimateImpact)
       sim$CMI <- resampleStacks(stack = sim$CMIstack, time = time(sim),
                                 studyArea = sim$studyArea, rtm = sim$rasterToMatch,
-                                cacheClimateRas = P(sim)$cacheClimateRas)
+                                cacheClimateRas = P(sim)$cacheClimateRas,
+                                firstYear = P(sim)$yearOfFirstClimateImpact)
       sim <- scheduleEvent(sim, time(sim) + 1, eventType = "prepRasters", eventPriority = 1)
     },
 
@@ -405,7 +407,7 @@ gmcsModelBuild <- function(PSPmodelData, model, type) {
 }
 
 
-resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClimateRas, firstYear = P(sim)$yearOfFirstClimateImpact) {
+resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClimateRas, firstYear) {
   # Restructured to test time for number of characters (entering time as XX or YYYY)
   if (nchar(time) <= 3){
     time <- time + 2001 #2001 is purely arbirtary for Tati's sake due to kNN - boo relative years
