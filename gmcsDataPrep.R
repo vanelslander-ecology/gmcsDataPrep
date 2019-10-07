@@ -45,7 +45,9 @@ defineModule(sim, list(
                     custom LandR.CS predict function to predict...for now"),
     defineParameter("GCM", "character", "CanESM2_RCP4.5", NA, NA,
                     desc = paste("the global climate model and rcp scenario to use. Defaults to CanESM2_RCP4.5.",
-                                 "Currently the only other option is CCSM_RCP4.5"))
+                                 "Currently the only other option is CCSM_RCP4.5")),
+    defineParameter("yearOfFirstClimateImpact", 'numeric', 2011, NA, NA,
+                    desc = paste("the first year for which to calculate climate impacts. For years preceeding this parameter"))
   ),
   inputObjects = bind_rows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
@@ -403,15 +405,19 @@ gmcsModelBuild <- function(PSPmodelData, model, type) {
 }
 
 
-resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClimateRas) {
+resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClimateRas, firstYear = P(sim)$yearOfFirstClimateImpact) {
   # Restructured to test time for number of characters (entering time as XX or YYYY)
   if (nchar(time) <= 3){
-    time <- time + 2001 #2001 is purely arbirtary for Tati's sake due to kNN  - boo relative years
+    time <- time + 2001 #2001 is purely arbirtary for Tati's sake due to kNN - boo relative years
     message(paste0("Time entered is < 1900. Temporarily converting your current time as ",
                    crayon::yellow("time + 2001"),
                    "(year of Knn data collection). The current time is now ", time, ".",
                    " \nIf the simulation is set up for more than 1000 years,\nplease provide the start and end time as ",
                    crayon::yellow("YYYY")))
+  }
+
+  if (time < firstYear) {
+    return(NULL) #don't return climate data
   }
 
   currentRas <- grep(pattern = time, x = names(stack))
