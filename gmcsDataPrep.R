@@ -67,7 +67,7 @@ defineModule(sim, list(
                  desc = "PSP plot data as sf object", sourceURL = NA),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table",
                  desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA",
-                              "this means temperature is represented as tenths of a degree, so 32.1 = 3.21 degrees",
+                              "note: temp was represented as degree, unlike in the raster data",
                               "you must supply two derived variables, CMI (MAT - Eref) and ATA (MAT - normalMAT)"),
                  sourceURL = "https://drive.google.com/open?id=1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
@@ -329,7 +329,6 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
       changes$period <- period
       changes$CMI <- CMI
       changes$CMIA <- ACMI
-      changes$ATA <- ATA/10 #ATA was stored as 1/10th of a degree. This is backtransforming to degrees
       changes$OrigPlotID1 <- p$OrigPlotID1[1]
       changes$year <- year
       changes$standAge <- p$baseSA[1] + P$MeasureYear[i+1] - P$MeasureYear[1]
@@ -448,7 +447,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
 
     if (isATA == TRUE) {
       #ATA was stored as an integer AND as tenth of a degree. So divide by 10000 to get actual degrees
-      yearRas[] <- yearRas[]/1000/10
+      yearRas[] <- yearRas[]/10000
     }
 
     #this is a safety catch in case there are NAs due to the resampling --- there shouldn't be with new postProcess changes
