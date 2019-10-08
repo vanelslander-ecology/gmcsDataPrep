@@ -329,6 +329,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
       changes$period <- period
       changes$CMI <- CMI
       changes$CMIA <- ACMI
+      changes$ATA <- ATA
       changes$OrigPlotID1 <- p$OrigPlotID1[1]
       changes$year <- year
       changes$standAge <- p$baseSA[1] + P$MeasureYear[i+1] - P$MeasureYear[1]
