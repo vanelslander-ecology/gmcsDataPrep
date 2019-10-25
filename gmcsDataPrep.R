@@ -544,6 +544,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
                                url = ata.url,
                                destinationPath = dPath,
                                fun = "raster::stack",
+                               alsoExtract = 'similar',
                                overwrite = TRUE,
                                useCache = TRUE
                                ) #if a pixel is 10 degrees above average, needs 4S
@@ -568,6 +569,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
                                url = cmi.url,
                                destinationPath = dPath,
                                fun = "raster::stack",
+                               alsoExtract = 'similar',
                                overwrite = TRUE,
                                useCache = TRUE
                                )
