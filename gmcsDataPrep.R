@@ -66,10 +66,10 @@ defineModule(sim, list(
     expectsInput(objectName = 'PSPgis', objectClass = 'data.table',
                  desc = "PSP plot data as sf object", sourceURL = NA),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table",
-                 desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA",
+                 desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA w/ csv",
                               "note: temp was represented as degree, unlike in the raster data",
-                              "you must supply two derived variables, CMI (MAT - Eref) and ATA (MAT - normalMAT)"),
-                 sourceURL = "https://drive.google.com/open?id=1PD_Fve2iMpzHHaxT99dy6QY7SFQLGpZG"),
+                              "you must supply ATA (MAT - normalMAT), which is not supplied by climateNA"),
+                 sourceURL = "https://drive.google.com/open?id=1neG4RAfQLDPAt6-X4AJ676D5egEQfmCZ"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
                  desc = "template raster for ATA and CMI"),
     expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame",
@@ -172,7 +172,9 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
     setkey(., OrigPlotID1)
   message(yellow(paste0("There are "), nrow(PSP_sa), " PSPs in your study area"))
   #Restrict climate variables to only thosee of interest.. should be param
-  PSPclimData <- PSPclimData[,.("OrigPlotID1" = ID1, Year, CMI, MAT)]
+  #Calculate the derived variable CMI - previously calculated in input objects
+  PSPclimData[, "CMI" := MAP - Eref]
+  PSPclimData <- PSPclimData[,.(OrigPlotID1, Year, CMI, MAT)]
 
   #Filter other PSP datasets to those in study Area
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
@@ -520,9 +522,6 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
                                  url = extractURL("PSPclimData"),
                                  destinationPath = dPath,
                                  fun = "data.table::fread")
-   #Calculate CMI - this variable is not included in climateNA.
-   #CMI = annual precipitation - potential evapotranspiration
-   sim$PSPclimData <- sim$PSPclimData[, "CMI" := MAP - Eref]
   }
 
   if (!suppliedElsewhere("ATAstack", sim)) {
@@ -544,7 +543,6 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
                                url = ata.url,
                                destinationPath = dPath,
                                fun = "raster::stack",
-                               #alsoExtract = 'similar', # This was already being passed.
                                overwrite = TRUE,
                                useCache = TRUE
                                ) #if a pixel is 10 degrees above average, needs 4S
@@ -569,7 +567,6 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
                                url = cmi.url,
                                destinationPath = dPath,
                                fun = "raster::stack",
-                               # alsoExtract = 'similar', Already being passed
                                overwrite = TRUE,
                                useCache = TRUE
                                )
