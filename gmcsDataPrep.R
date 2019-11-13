@@ -518,9 +518,10 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
   }
 
   if (!suppliedElsewhere("PSPclimData", sim)) {
-   sim$PSPclimData <- prepInputs(targetFile = file.path(dPath, "climateNA_PSPel_1920-2017YT.csv"),
+   sim$PSPclimData <- prepInputs(targetFile = file.path(dPath, "climateNA_PSP_1920-2018.csv"),
                                  url = extractURL("PSPclimData"),
                                  destinationPath = dPath,
+                                 useCache = TRUE,
                                  fun = "data.table::fread")
   }
 
