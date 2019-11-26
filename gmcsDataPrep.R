@@ -43,9 +43,10 @@ defineModule(sim, list(
                     NA, NA, desc = "Quoted model used to predict mortality in PSP data as a function of logAge, CMI, ATA, and
                  their interactions, with PlotID as a random effect. Defaults to zero-inflated inverse gaussian glm that requires
                     custom LandR.CS predict function to predict...for now"),
-    defineParameter("GCM", "character", "CanESM2_RCP4.5", NA, NA,
+    defineParameter("GCM", "character", "CCSM4_RCP4.5", NA, NA,
                     desc = paste("the global climate model and rcp scenario to use. Defaults to CanESM2_RCP4.5.",
-                                 "Currently the only other option is CCSM_RCP4.5")),
+                                 "Other available options include CanESM2_RCP4.5 and CCSM4_RCP8.5",
+                                 ". These were all generated using a 3 Arc-Minute DEM covering forested ecoregions of Canada.")),
     defineParameter("yearOfFirstClimateImpact", 'numeric', 2011, NA, NA,
                     desc = paste("the first year for which to calculate climate impacts. For years preceeding this parameter"))
   ),
@@ -451,6 +452,9 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
     if (isATA == TRUE) {
       #ATA was stored as an integer AND as tenth of a degree. So divide by 10000 to get actual degrees
       yearRas[] <- yearRas[]/10000
+      if (max(yearRas[]) > 100) {
+        stop("ATA values do not appear to have converted to degrees. Please read over expected inputs")
+      }
     }
 
     #this is a safety catch in case there are NAs due to the resampling --- there shouldn't be with new postProcess changes
@@ -527,14 +531,18 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
 
   if (!suppliedElsewhere("ATAstack", sim)) {
     #These should not be called using rasterToMatch (stack, memory)
-    if (P(sim)$GCM == "CCSM_RCP4.5") {
-      ata.url <- 'https://drive.google.com/open?id=1IVyPaI7FKA4yDhsBbxuN7I6FgZmPWKe_'
-      ata.tf <- "Canada3ArcMinuteCCSM_ATA2011-2100.grd"
-      ata.arc <- 'Canada3ArcMinuteCCSM_ATA2011-2100.zip'
+    if (P(sim)$GCM == "CCSM4_RCP4.5") {
+      ata.url <- 'https://drive.google.com/open?id=1OA67hJDJunQbfeG0nvCnwd3iDutI_EKf'
+      ata.tf <- "Canada3ArcMinute_CCSM4_45_ATA2011-2100.grd"
+      ata.arc <- 'Canada3ArcMinute_CCSM4_45_ATA2011-2100.zip'
     } else if (P(sim)$GCM == "CanESM2_RCP4.5") {
       ata.url <- "https://drive.google.com/open?id=1WRsJGd99hbk2Rn-vu-8K1ZTk_xrIFH8m"
       ata.tf <- "Canada3ArcMinute_ATA2011-2100.grd"
       ata.arc <- 'Canada3ArcMinute_ATA2011-2100.zip'
+    } else if (P(sim)$GCM == "CCSM4_RCP8.5") {
+      ata.url <- 'https://drive.google.com/open?id=1jyfq-7wG4a7EoyNhirgMlq4mYnAvoOeY'
+      ata.tf <- 'Canada3ArcMinute_CCSM4_85_ATA2011-2100.grd'
+      ata.arc <- 'Canada3ArcMinute_CCSM4_85_ATA2011-2100.zip'
     } else {
       stop("unrecognized GCM in P(sim)$GCM")
     }
@@ -550,14 +558,18 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
   }
 
   if (!suppliedElsewhere("CMIstack", sim)) {
-    if (P(sim)$GCM == "CCSM_RCP4.5") {
-      cmi.url <- 'https://drive.google.com/open?id=1JCDg7xA5nNcacP2skPOJYSoV655wPXXF'
-      cmi.tf <- "Canada3ArcMinuteCCSM_CMI2011-2100.grd"
-      cmi.arc <- 'Canada3ArcMinuteCCSM_CMI2011-2100.zip'
+    if (P(sim)$GCM == "CCSM4_RCP4.5") {
+      cmi.url <- 'https://drive.google.com/open?id=1ERoQmCuQp3_iffQ0kXN7SCQr07M7dawv'
+      cmi.tf <- "Canada3ArcMinute_CCSM4_45_CMI2011-2100.grd"
+      cmi.arc <- 'Canada3ArcMinute_CCSM4_45_CMI2011-2100.zip'
     } else if (P(sim)$GCM == "CanESM2_RCP4.5") {
       cmi.url <- "https://drive.google.com/open?id=1MwhK3eD1W6u0AgFbRgVg7j-qqyk0-3yA"
       cmi.tf <- "Canada3ArcMinute_CMI2011-2100.grd"
       cmi.arc <- "Canada3ArcMinute_CMI2011-2100.zip"
+    } else if (P(sim)$GCM == "CCSM_RCP8.5") {
+      cmi.url <- 'https://drive.google.com/open?id=1OcVsAQXKO4N4ZIESNmIZAI9IZcutctHX'
+      cmi.tf <- 'Canada3ArcMinute_CCSM4_85_CMI2011-2100.grd'
+      cmi.arc <- 'Canada3ArcMinute_CCSM4_85_CMI2011-2100.zip'
     } else {
       stop("unrecognized GCM in P(sim)$GCM")
     }
