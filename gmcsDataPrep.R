@@ -552,8 +552,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
                                url = ata.url,
                                destinationPath = dPath,
                                fun = "raster::stack",
-                               overwrite = TRUE,
-                               useCache = TRUE
+                               useCache = TRUE,
+                               userTags = c(currentModule(sim), "ATAstack")
                                ) #if a pixel is 10 degrees above average, needs 4S
   }
 
@@ -580,8 +580,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
                                url = cmi.url,
                                destinationPath = dPath,
                                fun = "raster::stack",
-                               overwrite = TRUE,
-                               useCache = TRUE
+                               useCache = TRUE,
+                               userTags = c(currentModule(sim), "CMIstack")
                                )
   }
 
@@ -599,8 +599,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
                                 fun = "raster::raster",
                                 studyArea = sim$studyArea,
                                 rasterToMatch = sim$rasterToMatch,
-                                overwrite = TRUE,
-                                useCache = FALSE,
+                                useCache = TRUE,
+                                userTags = c(currentModule(sim), "CMInormal"),
                                 method = 'bilinear',
                                 alsoExtract = "Canada3ArcMinute_normalCMI.gri")
   }
