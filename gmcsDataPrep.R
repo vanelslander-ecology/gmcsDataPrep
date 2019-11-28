@@ -44,9 +44,9 @@ defineModule(sim, list(
                  their interactions, with PlotID as a random effect. Defaults to zero-inflated inverse gaussian glm that requires
                     custom LandR.CS predict function to predict...for now"),
     defineParameter("GCM", "character", "CCSM4_RCP4.5", NA, NA,
-                    desc = paste("the global climate model and rcp scenario to use. Defaults to CanESM2_RCP4.5.",
-                                 "Other available options include CanESM2_RCP4.5 and CCSM4_RCP8.5",
-                                 ". These were all generated using a 3 Arc-Minute DEM covering forested ecoregions of Canada.")),
+                    desc = paste("if using default climate data, the global climate model and rcp scenario to use.",
+                                 "Defaults to CanESM2_RCP4.5. but other available options include CanESM2_RCP4.5 and CCSM4_RCP8.5.",
+                                 "These were all generated using a 3 Arc-Minute DEM covering forested ecoregions of Canada.")),
     defineParameter("yearOfFirstClimateImpact", 'numeric', 2011, NA, NA,
                     desc = paste("the first year for which to calculate climate impacts. For years preceeding this parameter"))
   ),
