@@ -77,7 +77,7 @@ defineModule(sim, list(
                  desc = "this area will be used to crop climate rasters", sourceURL = NA),
     expectsInput(objectName = 'studyAreaPSP', objectClass = 'SpatialPolygonsDataFrame',
                  desc = "this area will be used to subset PSP plots before building the statistical model. Currently PSP datasets with repeat measures exist only for Saskatchewan, Alberta, and Boreal British Columbia",
-                 sourceURL = NA),
+                 sourceURL = NA)
   ),
   outputObjects = bind_rows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
