@@ -53,8 +53,7 @@ defineModule(sim, list(
   inputObjects = bind_rows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = "ATAstack", objectClass = "RasterStack",
-                 desc = paste("annual projected mean annual temperature anomalies, units stored as tenth of a degree",
-                              "MULTIPLIED BY 1000 to save disk space, e.g. 3.32 degrees = 33200"),
+                 desc = paste("annual projected mean annual temperature anomalies, units stored as tenth of a degree"),
                  sourceURL = NA),
     expectsInput(objectName = "CMIstack", objectClass = "RasterStack",
                  desc = "annual projected mean climate moisture deficit",
@@ -450,8 +449,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
     }
 
     if (isATA == TRUE) {
-      #ATA was stored as an integer AND as tenth of a degree. So divide by 10000 to get actual degrees
-      yearRas[] <- yearRas[]/10000
+      #ATA was stored as an integer AND as tenth of a degree. So divide by 10 to get actual degrees
+      yearRas[] <- yearRas[]/10
       if (max(yearRas[], na.rm = TRUE) > 100) {
         stop("ATA values do not appear to have converted to degrees. Please read over expected inputs")
       }
@@ -459,8 +458,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
 
     #this is a safety catch in case there are NAs due to the resampling --- there shouldn't be with new postProcess changes
     medianVals <- median(yearRas[], na.rm = TRUE)
-    if (!is.null(yearRas[is.na(yearRas) & !is.na(rasterToMatch)])) {
-      yearRas[is.na(yearRas) & !is.na(rasterToMatch)] <- medianVals
+    if (!is.null(yearRas[is.na(yearRas) & !is.na(rtm)])) {
+      yearRas[is.na(yearRas) & !is.na(rtm)] <- medianVals
     }
     return(yearRas)
   } else {
@@ -532,20 +531,21 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
   if (!suppliedElsewhere("ATAstack", sim)) {
     #These should not be called using rasterToMatch (stack, memory)
     if (P(sim)$GCM == "CCSM4_RCP4.5") {
-      ata.url <- 'https://drive.google.com/open?id=1OA67hJDJunQbfeG0nvCnwd3iDutI_EKf'
-      ata.tf <- "Canada3ArcMinute_CCSM4_45_ATA2011-2100.grd"
+      ata.url <- 'https://drive.google.com/open?id=1sGRp0zNjlQUg6LXpEgG4anT2wx1jvuUQ'
+      ata.tf <- "Can3ArcMinute_CCSM4_RCP45_ATA2011-2100.grd"
       ata.arc <- 'Canada3ArcMinute_CCSM4_45_ATA2011-2100.zip'
     } else if (P(sim)$GCM == "CanESM2_RCP4.5") {
-      ata.url <- "https://drive.google.com/open?id=1WRsJGd99hbk2Rn-vu-8K1ZTk_xrIFH8m"
-      ata.tf <- "Canada3ArcMinute_ATA2011-2100.grd"
+      ata.url <- "https://drive.google.com/open?id=1d8wy70gxDcO2MKsQt7tYBpryKudE-99h"
+      ata.tf <- "Can3ArcMinute_CanESM2_RCP45_ATA2011-2100.grd"
       ata.arc <- 'Canada3ArcMinute_ATA2011-2100.zip'
     } else if (P(sim)$GCM == "CCSM4_RCP8.5") {
-      ata.url <- 'https://drive.google.com/open?id=1jyfq-7wG4a7EoyNhirgMlq4mYnAvoOeY'
-      ata.tf <- 'Canada3ArcMinute_CCSM4_85_ATA2011-2100.grd'
+      ata.url <- 'https://drive.google.com/open?id=1_LXyPRdWbUj_Kk3ab-bgjqDXcowg_lpM'
+      ata.tf <- 'Can3ArcMinute_CCSM4_RCP85_ATA2011-2100.grd'
       ata.arc <- 'Canada3ArcMinute_CCSM4_85_ATA2011-2100.zip'
     } else {
       stop("unrecognized GCM in P(sim)$GCM")
     }
+
     sim$ATAstack <- prepInputs(targetFile = ata.tf,
                                archive = ata.arc,
                                alsoExtract = "similar",
@@ -600,6 +600,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
                                 studyArea = sim$studyArea,
                                 rasterToMatch = sim$rasterToMatch,
                                 useCache = TRUE,
+                                overwrite = TRUE,
                                 userTags = c(currentModule(sim), "CMInormal"),
                                 method = 'bilinear',
                                 alsoExtract = "Canada3ArcMinute_normalCMI.gri")
