@@ -375,16 +375,17 @@ gmcsModelBuild <- function(PSPmodelData, model, type) {
 
     gmcsModel <- Cache(eval, model, envir = environment(), userTags = c("gmcsDataPrep", "growthModel"))
 
-  } else  {
-    assign(x = 'PSPmodelData', value = PSPmodelData, envir = globalenv()) #THIS IS A DUMB FIX
-
+  } else {
+    assign(x = 'PSPmodelData', value = PSPmodelData, envir = globalenv())
+    #This is an obnoxious fix to an mgcv problem, once it is resolved, remember to remove scrubGlobalEnv event
     gmcsModel <- Cache(foo, mod = model, dat = PSPmodelData)
   }
+
   # for reference, Yong's original multivariate model (year substituted for ATA)
   # gmcsModel <- lme(cbind(netBiomass, growth, mortality) ~ logAge + CMI + ATA + logAge:CMI + CMI:ATA + ATA
   #logAge, random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)
-  return(gmcsModel)
 
+  return(gmcsModel)
 }
 
 #This function exists to cache the converged model
