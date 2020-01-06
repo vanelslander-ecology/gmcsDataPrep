@@ -164,13 +164,17 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
                           PSPclimData, useHeight, biomassModel,
                           PSPperiod, minDBH) {
 
-  #Crop points to studyArea
-  tempSA <- spTransform(x = studyAreaPSP, CRSobj = crs(PSPgis)) %>%
-    st_as_sf(.)
-  message(yellow("Filtering PSPs to study Area..."))
-  PSP_sa <- PSPgis[tempSA,] %>% #Find how to cache this. '[' did not work
-    setkey(., OrigPlotID1)
-  message(yellow(paste0("There are "), nrow(PSP_sa), " PSPs in your study area"))
+  #Crop points to studyAreaPSP
+  if (!is.null(studyAreaPSP)) {
+    tempSA <- spTransform(x = studyAreaPSP, CRSobj = crs(PSPgis)) %>%
+      st_as_sf(.)
+    message(yellow("Filtering PSPs to study Area..."))
+    PSP_sa <- PSPgis[tempSA,] %>% #Find how to cache this. '[' did not work
+      setkey(., OrigPlotID1)
+    message(yellow(paste0("There are "), nrow(PSP_sa), " PSPs in your study area"))
+  } else {
+    PSP_sa <- PSPgis
+  }
   #Restrict climate variables to only thosee of interest.. should be param
   #Calculate the derived variable CMI - previously calculated in input objects
   PSPclimData[, "CMI" := MAP - Eref]
@@ -227,7 +231,9 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
 
   PSPplot <- PSPplot[climate, on = "OrigPlotID1"]
 
-
+  if (any(nrow(PSPclimData) == 0, nrow(PSPmeasure) == 0, nrow(PSPgis) == 0)) {
+    stop('all existing PSP data has been filtered.Try adjusting parameters')
+  }
   #Calculate biomass
   tempOut <- biomassCalculation(species = PSPmeasure$newSpeciesName,
                                         DBH = PSPmeasure$DBH,
@@ -243,112 +249,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   #Iterate over all plots, keeping OrigPlotID2s unique
   TrueUniques <- PSPmeasure[, .N, by = c("OrigPlotID1", "OrigPlotID2")]
 
-  pSppChange <- lapply(1:nrow(TrueUniques), FUN = function(x, m = PSPmeasure, p = PSPplot, clim = PSPclimData){
-    x <- TrueUniques[x,]
-    #Duplicate plots arise from variable 'stand' (OrigPlotID2) that varied within the same plot.
-    #Tree No. is not unique between stands, which means the same plot can have duplicate trees.
-    #sort by year. Calculate the changes in biomass, inc. unobserved growth and mortality
-    #must match MeasureID between plot and measure data; OrigPlotID2 not present in P
-
-    m <- m[OrigPlotID1 == x$OrigPlotID1 & OrigPlotID2 == x$OrigPlotID2,] #subset data by plot
-    p <- p[MeasureID %in% m$MeasureID]
-    clim <- clim[OrigPlotID1 %in% x,]
-    p <- setkey(p, MeasureYear)
-    m <- setkey(m, TreeNumber)
-    periods <- nrow(p) - 1
-
-    #For each interval
-    pSums <- lapply(1:periods, function(i, M = m, P = p, Clim = clim){
-
-      #Calculate climate variables.
-      #ACMI and ATA were added individually in separate model
-      CMI <- mean(Clim$CMI[Clim$Year >= p$MeasureYear[i] &
-                             Clim$Year <= p$MeasureYear[i+1]])
-      ACMI <- mean(Clim$CMI[Clim$Year >= p$MeasureYear[i] &
-                             Clim$Year <= p$MeasureYear[i+1]]) - p$CMI[1]
-      ATA <- mean(Clim$MAT[Clim$Year >= p$MeasureYear[i] &
-                             Clim$Year <= p$MeasureYear[i+1]]) - p$MAT[1]
-      AT <- mean(Clim$MAT[Clim$Year >= p$MeasureYear[i] &
-                             Clim$Year <= p$MeasureYear[i+1]])
-      period <- paste0(P$MeasureYear[i], "-", P$MeasureYear[i+1])
-
-      m1 <- M[MeasureYear == P$MeasureYear[i]]
-      m2 <- M[MeasureYear == P$MeasureYear[i + 1]]
-      censusLength <- P$MeasureYear[i + 1] - P$MeasureYear[i]
-      year <-ceiling(sum(P$MeasureYear[i] + P$MeasureYear[i + 1])/2)
-      living1 <- m1[m1$TreeNumber %in% m2$TreeNumber]
-      living2 <- m2[m2$TreeNumber %in% m1$TreeNumber]
-      dead <- m1[!m1$TreeNumber %in% m2$TreeNumber]
-      newborn <- m2[!m2$TreeNumber %in% m1$TreeNumber]
-
-      #Find observed annual changes in mortality and growth
-      living2$origBiomass <- living1$biomass
-      living <- living2[, .(newGrowth =  sum(biomass - origBiomass)/censusLength),
-                        c("Species", "newSpeciesName")] %>%
-        setkey(., Species, newSpeciesName)
-
-      newborn <- newborn[, .(newGrowth = sum(biomass)/(censusLength/2)), c("Species", "newSpeciesName")] %>%
-        setkey(., Species, newSpeciesName)
-      #measure from census midpoint for new seedlings
-      dead <- dead[, .(mortality = sum(biomass)/censusLength), by = c("Species", "newSpeciesName")] %>%
-        setkey(., Species, newSpeciesName)
-
-      #Find unobserved growth and mortality.
-      #Not necessary when summing by species, b/c we can't assign species for unobserved trees
-      #Unobserved growth and mortality = ~1% of observed, so climate influences on this are trivial.
-      #Leaving this in nonetheless, in case we change methods
-      #Unobserved recruits U = N * R * M * L
-      #N = # of trees with DBH between 10 and 15
-      # N <- nrow(m2[DBH <= 15]) #TODO ask Yong if this is m2, or total
-      # #R = number of recruits between two successive censuses (trees in t2 not in t1)/census length
-      # R <- nrow(newborn)/censusLength/N #I am not 100% sure if we divide by N or total stems in plot
-      # #M = Mortality rate, n-trees with DBH 10 -15 that died between two census/interval length
-      # M <- nrow(dead[DBH <= 15,])/censusLength/N
-      # #L = census interval length
-      # #Next calculate the median growth of the 10-15 DBH class, assume they grew to midpoint.
-      # UnobservedR <- N * R * M * censusLength
-      # UnobservedM <- UnobservedR * median(m2$biomass[m2$DBH <= 15])/censusLength/2
-      # #assume unobserved trees died at midpoint. I think this overestimates growth and mortality
-      # totalM <- UnobservedM + observedMortality
-      # totalG <- UnobservedM + observedGrowth
-
-      changes <- bind(newborn, living)
-
-      #to prevent error if any table is empty
-      changes$mortality <- 0
-      dead$newGrowth <- 0
-
-      changes <- bind(changes, dead)
-      changes[is.na(changes)] <- 0
-      changes <- changes[, .("netGrowth" = sum(newGrowth), "mortality" = sum(mortality)),
-                         by = c("Species", "newSpeciesName")]
-      changes <- changes[, .("species" = Species,
-                             "sppLong" = newSpeciesName,
-                             "netBiomass" = (netGrowth - mortality),
-                             "growth" = netGrowth,
-                             mortality)]
-
-      changes$period <- period
-      changes$CMI <- CMI
-      changes$CMIA <- ACMI
-      changes$ATA <- ATA
-      changes$OrigPlotID1 <- p$OrigPlotID1[1]
-      changes$year <- year
-      changes$standAge <- p$baseSA[1] + P$MeasureYear[i+1] - P$MeasureYear[1]
-      changes$logAge <- log(changes$standAge)
-      changes$plotSize <- p$PlotSize[1]
-      changes$periodLength <- censusLength
-      changes$AT <- AT
-
-      #stand age is constant through time in the data. hmm
-      setcolorder(changes, c("OrigPlotID1", "period", "species", "sppLong", "growth", "mortality", "netBiomass",
-                            "CMI", "CMIA", "AT", "ATA", "standAge", "logAge", "plotSize", "periodLength"))
-      return(changes)
-    })
-
-    pSums <- rbindlist(pSums)
-    return(pSums)
-  })
+  pSppChange <- lapply(1:nrow(TrueUniques), rows = TrueUniques, FUN = sumPeriod, m = PSPmeasure, p = PSPplot, clim = PSPclimData)
   PSPmodelData <- rbindlist(pSppChange)
   PSPmodelData$species <- factor(PSPmodelData$species)
   PSPmodelData$sppLong <- factor(PSPmodelData$sppLong)
@@ -484,6 +385,117 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
   return(yearRas)
 }
 
+#moved this function out of lapply so the 3.5 GB environment isnt cached everytime
+pspIntervals <- function(i, M, P, Clim){
+
+  #Calculate climate variables.
+  #ACMI and ATA were added individually in separate model
+  CMI <- mean(Clim$CMI[Clim$Year >= P$MeasureYear[i] &
+                         Clim$Year <= P$MeasureYear[i+1]])
+  ACMI <- mean(Clim$CMI[Clim$Year >= P$MeasureYear[i] &
+                          Clim$Year <= P$MeasureYear[i+1]]) - P$CMI[1]
+  ATA <- mean(Clim$MAT[Clim$Year >= P$MeasureYear[i] &
+                         Clim$Year <= P$MeasureYear[i+1]]) - P$MAT[1]
+  AT <- mean(Clim$MAT[Clim$Year >= P$MeasureYear[i] &
+                        Clim$Year <= P$MeasureYear[i+1]])
+  period <- paste0(P$MeasureYear[i], "-", P$MeasureYear[i+1])
+
+  m1 <- M[MeasureYear == P$MeasureYear[i]]
+  m2 <- M[MeasureYear == P$MeasureYear[i + 1]]
+  censusLength <- P$MeasureYear[i + 1] - P$MeasureYear[i]
+  year <-ceiling(sum(P$MeasureYear[i] + P$MeasureYear[i + 1])/2)
+  living1 <- m1[m1$TreeNumber %in% m2$TreeNumber]
+  living2 <- m2[m2$TreeNumber %in% m1$TreeNumber]
+  dead <- m1[!m1$TreeNumber %in% m2$TreeNumber]
+  newborn <- m2[!m2$TreeNumber %in% m1$TreeNumber]
+
+  #Find observed annual changes in mortality and growth
+  living2$origBiomass <- living1$biomass
+  living <- living2[, .(newGrowth =  sum(biomass - origBiomass)/censusLength),
+                    c("Species", "newSpeciesName")] %>%
+    setkey(., Species, newSpeciesName)
+
+  newborn <- newborn[, .(newGrowth = sum(biomass)/(censusLength/2)), c("Species", "newSpeciesName")] %>%
+    setkey(., Species, newSpeciesName)
+  #measure from census midpoint for new seedlings
+  dead <- dead[, .(mortality = sum(biomass)/censusLength), by = c("Species", "newSpeciesName")] %>%
+    setkey(., Species, newSpeciesName)
+
+  #Find unobserved growth and mortality.
+  #Not necessary when summing by species, b/c we can't assign species for unobserved trees
+  #Unobserved growth and mortality = ~1% of observed, so climate influences on this are trivial.
+  #Leaving this in nonetheless, in case we change methods
+  #Unobserved recruits U = N * R * M * L
+  #N = # of trees with DBH between 10 and 15
+  # N <- nrow(m2[DBH <= 15]) #TODO ask Yong if this is m2, or total
+  # #R = number of recruits between two successive censuses (trees in t2 not in t1)/census length
+  # R <- nrow(newborn)/censusLength/N #I am not 100% sure if we divide by N or total stems in plot
+  # #M = Mortality rate, n-trees with DBH 10 -15 that died between two census/interval length
+  # M <- nrow(dead[DBH <= 15,])/censusLength/N
+  # #L = census interval length
+  # #Next calculate the median growth of the 10-15 DBH class, assume they grew to midpoint.
+  # UnobservedR <- N * R * M * censusLength
+  # UnobservedM <- UnobservedR * median(m2$biomass[m2$DBH <= 15])/censusLength/2
+  # #assume unobserved trees died at midpoint. I think this overestimates growth and mortality
+  # totalM <- UnobservedM + observedMortality
+  # totalG <- UnobservedM + observedGrowth
+
+  changes <- bind(newborn, living)
+
+  #to prevent error if any table is empty
+  changes$mortality <- 0
+  dead$newGrowth <- 0
+
+  changes <- bind(changes, dead)
+  changes[is.na(changes)] <- 0
+  changes <- changes[, .("netGrowth" = sum(newGrowth), "mortality" = sum(mortality)),
+                     by = c("Species", "newSpeciesName")]
+  changes <- changes[, .("species" = Species,
+                         "sppLong" = newSpeciesName,
+                         "netBiomass" = (netGrowth - mortality),
+                         "growth" = netGrowth,
+                         mortality)]
+
+  changes$period <- period
+  changes$CMI <- CMI
+  changes$CMIA <- ACMI
+  changes$ATA <- ATA
+  changes$OrigPlotID1 <- P$OrigPlotID1[1]
+  changes$year <- year
+  changes$standAge <- P$baseSA[1] + P$MeasureYear[i+1] - P$MeasureYear[1]
+  changes$logAge <- log(changes$standAge)
+  changes$plotSize <- P$PlotSize[1]
+  changes$periodLength <- censusLength
+  changes$AT <- AT
+
+  #stand age is constant through time in the data. hmm
+  setcolorder(changes, c("OrigPlotID1", "period", "species", "sppLong", "growth", "mortality", "netBiomass",
+                         "CMI", "CMIA", "AT", "ATA", "standAge", "logAge", "plotSize", "periodLength"))
+  return(changes)
+
+}
+
+sumPeriod <- function(x, rows, m, p, clim){
+  x <- rows[x,]
+  #Duplicate plots arise from variable 'stand' (OrigPlotID2) that varied within the same plot.
+  #Tree No. is not unique between stands, which means the same plot can have duplicate trees.
+  #sort by year. Calculate the changes in biomass, inc. unobserved growth and mortality
+  #must match MeasureID between plot and measure data; OrigPlotID2 not present in P
+
+  m <- m[OrigPlotID1 == x$OrigPlotID1 & OrigPlotID2 == x$OrigPlotID2,] #subset data by plot
+  p <- p[MeasureID %in% m$MeasureID]
+  clim <- clim[OrigPlotID1 %in% x,]
+  p <- setkey(p, MeasureYear)
+  m <- setkey(m, TreeNumber)
+  periods <- nrow(p) - 1
+
+  #For each interval
+  pSums <- lapply(1:periods, FUN = pspIntervals, M = m, P = p, Clim = clim)
+
+  pSums <- rbindlist(pSums)
+  return(pSums)
+}
+
 .inputObjects <- function(sim) {
 
   cacheTags <- c(currentModule(sim), "function:.inputObjects")
@@ -513,11 +525,6 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
   if (!suppliedElsewhere("studyArea", sim)) {
     message("studyArea not supplied. Using a random area in Alberta")
     sim$studyArea <- randomStudyArea(size = 1e6)
-  }
-
-  if (!suppliedElsewhere("studyAreaPSP", sim)) {
-    message("studyAreaPSP not supplied. Using study area. You may want to supply studyAreaPSP if your studyArea is sub-provincial due to sample size issues with the multivariate model")
-    sim$studyAreaPSP <- sim$studyArea
   }
 
   if (!suppliedElsewhere("PSPclimData", sim)) {
