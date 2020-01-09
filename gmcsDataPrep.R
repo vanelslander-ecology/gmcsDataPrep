@@ -329,12 +329,13 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
 
   if (length(currentRas) > 0) {
 
-    yearRas <- postProcess(stack[[currentRas]],
+    yearRas <- suppressWarnings(postProcess(stack[[currentRas]],
                            rasterToMatch = rtm,
                            studyArea = studyArea,
                            filename2 = NULL,
                            method = "bilinear",
-                           useCache = cacheClimateRas)
+                           useCache = cacheClimateRas))
+    #need to suppress warnings about resampling method - it SHOULD be bilinear
 
     while (all(is.na(yearRas[]))){
       message(crayon::yellow(paste0(names(yearRas),
