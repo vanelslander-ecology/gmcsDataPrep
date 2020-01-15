@@ -164,6 +164,10 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
                           PSPclimData, useHeight, biomassModel,
                           PSPperiod, minDBH) {
 
+  #first remove trees with 9999 as TreeNumber. This happens in BC.
+
+  PSPmeasure <- PSPmeasure[TreeNumber != '9999']
+
   #Crop points to studyAreaPSP
   if (!is.null(studyAreaPSP)) {
     tempSA <- spTransform(x = studyAreaPSP, CRSobj = crs(PSPgis)) %>%
@@ -185,6 +189,9 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   PSPplot <- PSPplot[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
   PSPclimData <- PSPclimData[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
 
+
+  #might as well drop species with no biomass match
+
   #length(PSPclimData)/length(PSP_sa) should always yield a whole number.
   #Filter data by study period
   message(yellow("Filtering by study period..."))
@@ -198,6 +205,11 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   PSPmeasure <- PSPmeasure[PSPplot, on = c('MeasureID', 'OrigPlotID1', 'MeasureYear')]
   PSPmeasure[, c('Longitude', 'Latitude', 'Easting', 'Northing', 'Zone'):= NULL]
 
+
+  #Restrict to trees > minDBH (P) This gets rid of some big trees. Some 15 metres tall
+  PSPmeasure <- PSPmeasure[DBH >= minDBH,]
+  # PSPplot <- PSPplot[MeasureID %in% PSPmeasure$MeasureID] This will be repeated below
+
   #Filter by > 30 trees at first measurement (P) to ensure forest.
   message(yellow("Filtering by min. 30 trees in earliest measurement"))
   forestPlots <- PSPmeasure[MeasureYear == baseYear, .(measures = .N), OrigPlotID1] %>%
@@ -207,12 +219,24 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   repeats <- PSPplot[, .(measures = .N), by = OrigPlotID1]
   message(yellow(paste0("There are "), nrow(repeats), " PSPs with min. 30 trees at earliest measurement"))
 
+
+  #subset by biomass, because some plots have no species that can be estimated
+ #These will be counted in the 30 trees requirement, but may result in a plot of NA biomass if repeat measures = 2+
+  tempOut <- biomassCalculation(species = PSPmeasure$newSpeciesName,
+                                DBH = PSPmeasure$DBH,
+                                height = PSPmeasure$Height,
+                                includeHeight = useHeight,
+                                equationSource = biomassModel)
+  message(yellow("No biomass estimate possible for these species: "))
+  print(tempOut$missedSpecies)
+  PSPmeasure$biomass <- tempOut$biomass
+
+
   #Filter by 3+ repeat measures - must be last filter criteria. Also the most complex (thanks Alberta)
   #Some plots share ID but have different trees so simple count of plots insufficient to find repeat measures
   #Reduce PSPmeasure to MeasureID, PlotID1, PlotID2, MeasureYear, remove duplicates
   # then find repeat measures of MeasureYear, match back to MeasureID in both PSPplot and PSPmeasure.
   message(yellow("Filtering by at least 3 repeat measures per plot"))
-
   repeats <- PSPmeasure[, .(MeasureID, OrigPlotID1, OrigPlotID2, MeasureYear)] %>%
     .[!duplicated(.)] %>%
     .[, .('repeatMeasures' = .N), by = .(OrigPlotID1, OrigPlotID2)] %>%
@@ -220,12 +244,9 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   setkey(repeats, OrigPlotID1, OrigPlotID2)
   setkey(PSPmeasure, OrigPlotID1, OrigPlotID2)
   PSPmeasure <- PSPmeasure[repeats]
-  PSPplot <- PSPplot[MeasureID %in% PSPmeasure$MeasureID]
+  PSPplot <- PSPplot[MeasureID %in% PSPmeasure$MeasureID] #this ensures all plots have biomass/repeat measures
 
   message(yellow(paste0("There are "), nrow(repeats), " PSPs with min. 3 repeat measures"))
-
-  #Restrict to trees > 10 DBH (P) This gets rid of some big trees. Some 15 metres tall
-  PSPmeasure <- PSPmeasure[DBH >= minDBH,]
 
   climate <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("CMI" = mean(CMI), "MAT" = mean(MAT)), OrigPlotID1]
 
@@ -234,17 +255,6 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   if (any(nrow(PSPclimData) == 0, nrow(PSPmeasure) == 0, nrow(PSPgis) == 0)) {
     stop('all existing PSP data has been filtered.Try adjusting parameters')
   }
-  #Calculate biomass
-  tempOut <- biomassCalculation(species = PSPmeasure$newSpeciesName,
-                                        DBH = PSPmeasure$DBH,
-                                        height = PSPmeasure$Height,
-                                        includeHeight = useHeight,
-                                        equationSource = biomassModel)
-  message(yellow("No biomass estimate possible for these species: "))
-  print(tempOut$missedSpecies)
-  PSPmeasure$biomass <- tempOut$biomass
-  PSPmeasure <- PSPmeasure[biomass != 0]
-  #might as well drop species with no biomass match
 
   #Iterate over all plots, keeping OrigPlotID2s unique
   TrueUniques <- PSPmeasure[, .N, by = c("OrigPlotID1", "OrigPlotID2")]
@@ -330,11 +340,12 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
   if (length(currentRas) > 0) {
 
     yearRas <- suppressWarnings(postProcess(stack[[currentRas]],
-                           rasterToMatch = rtm,
-                           studyArea = studyArea,
-                           filename2 = NULL,
-                           method = "bilinear",
-                           useCache = cacheClimateRas))
+                                            rasterToMatch = rtm,
+                                            studyArea = studyArea,
+                                            filename2 = NULL,
+                                            method = "bilinear",
+                                            useCache = cacheClimateRas))
+
     #need to suppress warnings about resampling method - it SHOULD be bilinear
 
     while (all(is.na(yearRas[]))){
@@ -410,11 +421,16 @@ pspIntervals <- function(i, M, P, Clim){
   dead <- m1[!m1$TreeNumber %in% m2$TreeNumber]
   newborn <- m2[!m2$TreeNumber %in% m1$TreeNumber]
 
+  if (nrow(living1) != nrow(living2)) {
+    stop('there is a problem with the PSP dataset. Contact ian.eddy@canada.ca')
+  }
   #Find observed annual changes in mortality and growth
   living2$origBiomass <- living1$biomass
   living <- living2[, .(newGrowth =  sum(biomass - origBiomass)/censusLength),
                     c("Species", "newSpeciesName")] %>%
     setkey(., Species, newSpeciesName)
+  #growth cannot be negative by definition. So if a reduction in DBH occured, this will count as 0
+  living[newGrowth < 0, newGrowth := 0]
 
   newborn <- newborn[, .(newGrowth = sum(biomass)/(censusLength/2)), c("Species", "newSpeciesName")] %>%
     setkey(., Species, newSpeciesName)
@@ -525,7 +541,7 @@ sumPeriod <- function(x, rows, m, p, clim){
 
   if (!suppliedElsewhere("studyArea", sim)) {
     message("studyArea not supplied. Using a random area in Alberta")
-    sim$studyArea <- randomStudyArea(size = 1e6)
+    sim$studyArea <- randomStudyArea(size = 1e6*50)
   }
 
   if (!suppliedElsewhere("PSPclimData", sim)) {
