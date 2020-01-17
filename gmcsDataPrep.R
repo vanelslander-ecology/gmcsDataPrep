@@ -375,11 +375,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
 
     #this is a safety catch in case there are NAs due to the resampling ---
     #there may be due to the disparity in spatial resolution - 16/01/2020 Still haven't solved this from 4.5 km to 250 m
-    medianVals <- median(getValues(yearRas), na.rm = TRUE)
-    if (!is.null(yearRas[is.na(yearRas) & !is.na(rtm)])) {
-      yearRas[is.na(yearRas) & !is.na(rtm)] <- medianVals
-    }
-    return(yearRas)
+
   } else {
     if (time > 2100){
       message(crayon::yellow(paste0("The current time (", time,") is > 2100 and there are no predictions for this year.
@@ -397,6 +393,11 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
       yearRas <- rasterToMatch #Make a NULL raster for no climate effect
       yearRas[!is.na(rasterToMatch)] <- 0
     }
+  }
+
+  medianVals <- median(getValues(yearRas), na.rm = TRUE)
+  if (!is.null(yearRas[is.na(yearRas) & !is.na(rtm)])) {
+    yearRas[is.na(yearRas) & !is.na(rtm)] <- medianVals
   }
 
   return(yearRas)
