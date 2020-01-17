@@ -348,7 +348,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
 
     #need to suppress warnings about resampling method - it SHOULD be bilinear
 
-    while (all(is.na(yearRas[]))){
+    if (all(is.na(getValues(yearRas)))){
       #this shouldn't occur unless due to bugs in ClimateNA
       message(crayon::yellow(paste0(names(yearRas),
                                     " for this specific study area is all NA. Using previous years' raster ("
