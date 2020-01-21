@@ -112,7 +112,8 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
                                 cacheClimateRas = P(sim)$cacheClimateRas,
                                 firstYear = P(sim)$yearOfFirstClimateImpact)
       if (is.null(sim$ATA) & time(sim) < P(sim)$yearOfFirstClimateImpact) {
-        sim$ATA <- setValues(sim$rasterToMatch, 0) #replace with a raster with no climate anomaly
+        sim$ATA <- sim$rasterToMatch #replace with a raster with no climate anomaly
+        sim$ATA[!is.na(sim$ATA)] <- 0
       }
 
       sim$CMI <- resampleStacks(stack = sim$CMIstack, time = time(sim),
