@@ -215,7 +215,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   PSPmeasure[, c('Longitude', 'Latitude', 'Easting', 'Northing', 'Zone'):= NULL]
 
 
-  #Restrict to trees > minDBH (P) This gets rid of some big trees. Some 15 metres tall
+  #Restrict to trees > minDBH
   PSPmeasure <- PSPmeasure[DBH >= minDBH,]
   # PSPplot <- PSPplot[MeasureID %in% PSPmeasure$MeasureID] This will be repeated below
 
@@ -431,7 +431,7 @@ pspIntervals <- function(i, M, P, Clim){
   m1 <- M[MeasureYear == P$MeasureYear[i]]
   m2 <- M[MeasureYear == P$MeasureYear[i + 1]]
   censusLength <- P$MeasureYear[i + 1] - P$MeasureYear[i]
-  year <-ceiling(sum(P$MeasureYear[i] + P$MeasureYear[i + 1])/2)
+  year <- ceiling(sum(P$MeasureYear[i] + P$MeasureYear[i + 1])/2)
   living1 <- m1[m1$TreeNumber %in% m2$TreeNumber]
   living2 <- m2[m2$TreeNumber %in% m1$TreeNumber]
   dead <- m1[!m1$TreeNumber %in% m2$TreeNumber]
@@ -501,7 +501,6 @@ pspIntervals <- function(i, M, P, Clim){
   changes$periodLength <- censusLength
   changes$AT <- AT
 
-  #stand age is constant through time in the data. hmm
   setcolorder(changes, c("OrigPlotID1", "period", "species", "sppLong", "growth", "mortality", "netBiomass",
                          "CMI", "CMIA", "AT", "ATA", "standAge", "logAge", "plotSize", "periodLength"))
   return(changes)
