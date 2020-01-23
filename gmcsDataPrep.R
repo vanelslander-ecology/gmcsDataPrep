@@ -148,6 +148,9 @@ Init <- function(sim) {
     stop("Please supply P(sim)$PSPperiod of length 2 or greater")
   }
 
+  if (any(is.null(sim$PSPmeasure), is.null(sim$PSPplot), is.null(sim$PSPgis))) {
+    stop("The PSP objects are being supplied incorrectly. Please review loadOrder argument in simInit")
+  }
   sim$PSPmodelData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
                                     PSPgis = sim$PSPgis,
                                     PSPmeasure = sim$PSPmeasure,
@@ -535,23 +538,8 @@ sumPeriod <- function(x, rows, m, p, clim){
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
 
-  if (!suppliedElsewhere("PSPmeasure", sim)) {
-    message("You have not supplied PSP data. Consider running module 'PSP_Clean'. Generating simulated data")
-    sim$PSPmeasure <- data.table(MeasureID = "ABPSMature_1", OrigPlotID1 = 'AB1',
-                                 OrigPlotID2 = "1", MeasureYear = 1960, TreeNumber = 1,
-                                 Species = "PB", DBH = 39.4, Height = NA)
-  }
-
-  if (!suppliedElsewhere("PSPplot", sim)) {
-    sim$PSPplot <- data.table(MeasureID = "ABPSMature_1", OrigPlotID1 = 'AB1',
-                                 MeasureYear = 1960, Longitude = -116.8351, Latitude = 54.40416,
-                                 Zone = 11, Easting = 510704.3, Northing = 762, PlotSize = 0.1012,
-                              baseYear = 1960, baseSA = 76)
-  }
-
-  if (!suppliedElsewhere("PSPgis", sim)){
-    sim$PSPgis <- st_as_sf(x = sim$PSPplot, coords = c("Longitude", "Latitude"),
-                           crs = "+proj=longlat +datum=WGS84")
+  if (!suppliedElsewhere("PSPmeasure", sim) | !suppliedElsewhere("PSPplot", sim) | !suppliedElsewhere("PSPgis", sim) ) {
+    stop("You have not supplied PSP data. Please run PSP_Clean or supply the objects to simInit")
   }
 
   if (!suppliedElsewhere("studyArea", sim)) {
