@@ -151,6 +151,7 @@ Init <- function(sim) {
   if (any(is.null(sim$PSPmeasure), is.null(sim$PSPplot), is.null(sim$PSPgis))) {
     stop("The PSP objects are being supplied incorrectly. Please review loadOrder argument in simInit")
   }
+
   sim$PSPmodelData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
                                     PSPgis = sim$PSPgis,
                                     PSPmeasure = sim$PSPmeasure,
@@ -261,7 +262,8 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   message(yellow(paste0("There are "), nrow(repeats), " PSPs with min. 3 repeat measures"))
 
   climate <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("CMI" = mean(CMI), "MAT" = mean(MAT)), OrigPlotID1]
-
+  #not all PSP plots exist in PSPclimData - this must be fixed - July 2020 IE
+  PSPmeasure <- PSPmeasure[OrigPlotID1 %in% climate$OrigPlotID1,]
   PSPplot <- PSPplot[climate, on = "OrigPlotID1"]
 
   if (any(nrow(PSPclimData) == 0, nrow(PSPmeasure) == 0, nrow(PSPgis) == 0)) {
