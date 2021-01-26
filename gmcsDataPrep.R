@@ -51,7 +51,7 @@ defineModule(sim, list(
     defineParameter("yearOfFirstClimateImpact", 'numeric', 2011, NA, NA,
                     desc = paste("the first year for which to calculate climate impacts. For years preceeding this parameter"))
   ),
-  inputObjects = bind_rows(
+  inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = "ATAstack", objectClass = "RasterStack",
                  desc = paste("annual projected mean annual temperature anomalies, units stored as tenth of a degree"),
@@ -80,7 +80,7 @@ defineModule(sim, list(
                  desc = "this area will be used to subset PSP plots before building the statistical model. Currently PSP datasets with repeat measures exist only for Saskatchewan, Alberta, and Boreal British Columbia",
                  sourceURL = NA)
   ),
-  outputObjects = bind_rows(
+  outputObjects = bindrows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
     createsOutput(objectName = "PSPmodelData", objectClass = "data.table",
                   desc = "PSP growth mortality calculations"),
