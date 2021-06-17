@@ -355,7 +355,9 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
 
   if (length(currentRas) > 0) {
     #if useCache is False, this generates 6 messages a year.
-    yearRas <-
+
+    if(!compareRaster(stack[[currentRas]], rtm)) {
+      yearRas <-
       suppressWarnings(
         postProcess(stack[[currentRas]],
                     rasterToMatch = rtm,
@@ -364,6 +366,9 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
                     method = "bilinear",
                     useCache = cacheClimateRas)
       )
+    } else {
+      yearRas <- stack[[currentRas]]
+    }
 
     #need to suppress warnings about resampling method - it SHOULD be bilinear
 
