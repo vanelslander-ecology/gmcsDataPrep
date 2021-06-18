@@ -356,7 +356,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
   if (length(currentRas) > 0) {
     #if useCache is False, this generates 6 messages a year.
 
-    if(!compareRaster(stack[[currentRas]], rtm)) {
+    if(!compareRaster(stack[[currentRas]], rtm, stopiffalse = FALSE)) {
       yearRas <-
       suppressWarnings(
         postProcess(stack[[currentRas]],
