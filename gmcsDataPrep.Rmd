@@ -22,6 +22,8 @@ For help writing in R Markdown, see http://rmarkdown.rstudio.com/.
 
 ```{r module_usage}
 library(SpaDES)
+library(LandR)
+library(raster)
 
 setPaths(modulePath = file.path("../"))
 getPaths() # shows where the 4 relevant paths are
@@ -35,8 +37,11 @@ parameters <- list(
   #module2 = list(param1 = value1, param2 = value2)
 )
 
+studyArea <- randomStudyArea(size=  10000*6.25*400)
+templateRaster <- raster(extent(studyArea), crs = crs(studyArea), res = c(500,500))
+templateRaster <- setValues(templateRaster, 1)
 modules <- list("gmcsDataPrep", "PSP_Clean")
-objects <- list(studyArea = studyArea, rasterToMatch = rtm)
+objects <- list(studyArea = studyArea, rasterToMatch = templateRaster)
 inputs <- list()
 outputs <- list()
 
