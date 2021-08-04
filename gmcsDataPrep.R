@@ -19,11 +19,14 @@ defineModule(sim, list(
                   "PredictiveEcology/LandR@development", "MASS", "gamlss", "LandR.CS", 'PredictiveEcology/pemisc@development'),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
-    defineParameter(".useCache", "logical", FALSE, NA, NA, desc = "Should this entire module be run with caching activated?
+    defineParameter(".useCache", "logical", FALSE, NA, NA,
+                    desc = "Should this entire module be run with caching activated?
                     This is generally intended for data-type modules, where stochasticity and time are not relevant"),
-    defineParameter("PSPperiod", "numeric", c(1958, 2011), NA, NA, desc = "The years by which to compute climate normals and subset sampling plot data.
+    defineParameter("PSPperiod", "numeric", c(1958, 2011), NA, NA,
+                    desc = "The years by which to compute climate normals and subset sampling plot data.
                     Must be a vector of at least length 2"),
-    defineParameter("minDBH", "numeric", 10, 0, NA, desc = "The minimum DBH allowed. Each province uses different criteria for monitoring trees,
+    defineParameter("minDBH", "numeric", 10, 0, NA,
+                    desc = "The minimum DBH allowed. Each province uses different criteria for monitoring trees,
                     so absence of entries < min(DBH) does not equate to absence of trees."),
     defineParameter("useHeight", "logical", FALSE, NA, NA, desc = "Should height be used to calculate biomass (in addition to DBH).
                     Don't use if studyAreaPSP includes Alberta"),
@@ -68,10 +71,9 @@ defineModule(sim, list(
     expectsInput(objectName = 'PSPgis', objectClass = 'data.table',
                  desc = "PSP plot data as sf object", sourceURL = NA),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table",
-                 desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA w/ csv",
-                              "note: temp was represented as degree, unlike in the raster data",
-                              "you must supply ATA (MAT - normalMAT), which is not supplied by climateNA"),
-                 sourceURL = "https://drive.google.com/open?id=1neG4RAfQLDPAt6-X4AJ676D5egEQfmCZ"),
+                 desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA with csv",
+                              "Temp is represented as degrees, not tenth of degrees as with the raster data"),
+                 sourceURL = "https://drive.google.com/file/d/1wFRcMc4iS84FrsWCT414EZncA_1Uo7Qi/view?usp=sharing"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
                  desc = "template raster for ATA and CMI"),
     expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame",
@@ -179,8 +181,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
                           PSPclimData, useHeight, biomassModel,
                           PSPperiod, minDBH) {
 
-  #first remove trees with 9999 as TreeNumber. This happens in BC.
-
+  #first remove trees with 9999 as TreeNumber
   PSPmeasure <- PSPmeasure[TreeNumber != '9999']
 
   #Crop points to studyAreaPSP
@@ -275,7 +276,8 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   #Iterate over all plots, keeping OrigPlotID2s unique
   TrueUniques <- PSPmeasure[, .N, by = c("OrigPlotID1", "OrigPlotID2")]
 
-  pSppChange <- lapply(1:nrow(TrueUniques), rows = TrueUniques, FUN = sumPeriod, m = PSPmeasure, p = PSPplot, clim = PSPclimData)
+  pSppChange <- lapply(1:nrow(TrueUniques), rows = TrueUniques,
+                       FUN = sumPeriod, m = PSPmeasure, p = PSPplot, clim = PSPclimData)
   PSPmodelData <- rbindlist(pSppChange)
   PSPmodelData$species <- factor(PSPmodelData$species)
   PSPmodelData$sppLong <- factor(PSPmodelData$sppLong)
@@ -552,11 +554,11 @@ sumPeriod <- function(x, rows, m, p, clim){
   }
 
   if (!suppliedElsewhere("PSPclimData", sim)) {
-   sim$PSPclimData <- prepInputs(targetFile = file.path(dPath, "climateNA_PSP_1920-2018.csv"),
-                                 url = extractURL("PSPclimData"),
-                                 destinationPath = dPath,
-                                 useCache = TRUE,
-                                 fun = "data.table::fread")
+    sim$PSPclimData <- prepInputs(url = extractURL("PSPclimData"),
+                                  targetFile = "PSPforClimateNA_1901-2019Y.csv",
+                                  destinationPath = dPath,
+                                  fun = "data.table::fread")
+    setnames(sim$PSPclimData, old = c("id1", "id2"), new = c("OrigPlotID1", "OrigPlotID2"))
   }
 
   if (!suppliedElsewhere("ATAstack", sim)) {
@@ -585,7 +587,7 @@ sumPeriod <- function(x, rows, m, p, clim){
                                fun = "raster::stack",
                                useCache = TRUE,
                                userTags = c(currentModule(sim), "ATAstack")
-                               ) #if a pixel is 10 degrees above average, needs 4S
+    ) #if a pixel is 10 degrees above average, needs 4S
   }
 
   if (!suppliedElsewhere("CMIstack", sim)) {
@@ -613,7 +615,7 @@ sumPeriod <- function(x, rows, m, p, clim){
                                fun = "raster::stack",
                                useCache = TRUE,
                                userTags = c(currentModule(sim), "CMIstack")
-                               )
+    )
   }
 
   if (!suppliedElsewhere("rasterToMatch", sim)) {
