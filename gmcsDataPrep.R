@@ -157,14 +157,15 @@ Init <- function(sim) {
   }
 
   sim$PSPmodelData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
-                                    PSPgis = sim$PSPgis,
-                                    PSPmeasure = sim$PSPmeasure,
-                                    PSPplot = sim$PSPplot,
-                                    PSPclimData = sim$PSPclimData,
-                                    useHeight = P(sim)$useHeight,
-                                    biomassModel = P(sim)$biomassModel,
-                                    PSPperiod = P(sim)$PSPperiod,
-                                    minDBH = P(sim)$minDBH,
+                            PSPgis = sim$PSPgis,
+                            PSPmeasure = sim$PSPmeasure,
+                            PSPplot = sim$PSPplot,
+                            PSPclimData = sim$PSPclimData,
+                            useHeight = P(sim)$useHeight,
+                            biomassModel = P(sim)$biomassModel,
+                            PSPperiod = P(sim)$PSPperiod,
+                            minDBH = P(sim)$minDBH,
+                            useCache = P(sim)$.useCache,
                             userTags = c("gmcsDataPrep", "prepModelData"))
 
   sim$gcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
@@ -248,17 +249,17 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   PSPmeasure$biomass <- tempOut$biomass
 
 
-  #Filter by 3+ repeat measures - must be last filter criteria. Also the most complex (thanks Alberta)
+  #Filter by 3+ repeat measures - must be last filter criteria.
   #Some plots share ID but have different trees so simple count of plots insufficient to find repeat measures
   #Reduce PSPmeasure to MeasureID, PlotID1, PlotID2, MeasureYear, remove duplicates
   # then find repeat measures of MeasureYear, match back to MeasureID in both PSPplot and PSPmeasure.
   message(yellow("Filtering by at least 3 repeat measures per plot"))
-  repeats <- PSPmeasure[, .(MeasureID, OrigPlotID1, OrigPlotID2, MeasureYear)] %>%
+  repeats <- PSPmeasure[, .(MeasureID, OrigPlotID1, MeasureYear)] %>%
     .[!duplicated(.)] %>%
-    .[, .('repeatMeasures' = .N), by = .(OrigPlotID1, OrigPlotID2)] %>%
+    .[, .('repeatMeasures' = .N), by = .(OrigPlotID1)] %>%
     .[repeatMeasures > 2]
-  setkey(repeats, OrigPlotID1, OrigPlotID2)
-  setkey(PSPmeasure, OrigPlotID1, OrigPlotID2)
+  setkey(repeats, OrigPlotID1)
+  setkey(PSPmeasure, OrigPlotID1)
   PSPmeasure <- PSPmeasure[repeats]
   PSPplot <- PSPplot[MeasureID %in% PSPmeasure$MeasureID] #this ensures all plots have biomass/repeat measures
 
@@ -273,8 +274,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
     stop('all existing PSP data has been filtered.Try adjusting parameters')
   }
 
-  #Iterate over all plots, keeping OrigPlotID2s unique
-  TrueUniques <- PSPmeasure[, .N, by = c("OrigPlotID1", "OrigPlotID2")]
+  TrueUniques <- PSPmeasure[, .N, .(OrigPlotID1)]
 
   pSppChange <- lapply(1:nrow(TrueUniques), rows = TrueUniques,
                        FUN = sumPeriod, m = PSPmeasure, p = PSPplot, clim = PSPclimData)
@@ -524,11 +524,12 @@ pspIntervals <- function(i, M, P, Clim){
 sumPeriod <- function(x, rows, m, p, clim){
   x <- rows[x,]
   #Duplicate plots arise from variable 'stand' (OrigPlotID2) that varied within the same plot.
+  #this has been corrected by treating these as new plot ids.
+  #TODO: review this code and confirm if it is still necessary
   #Tree No. is not unique between stands, which means the same plot can have duplicate trees.
   #sort by year. Calculate the changes in biomass, inc. unobserved growth and mortality
   #must match MeasureID between plot and measure data; OrigPlotID2 not present in P
-
-  m <- m[OrigPlotID1 == x$OrigPlotID1 & OrigPlotID2 == x$OrigPlotID2,] #subset data by plot
+  m <- m[OrigPlotID1 == x$OrigPlotID1,] #subset data by plot
   p <- p[MeasureID %in% m$MeasureID]
   clim <- clim[OrigPlotID1 %in% x,]
   p <- setkey(p, MeasureYear)
