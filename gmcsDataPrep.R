@@ -565,6 +565,7 @@ sumPeriod <- function(x, rows, m, p, clim){
                                   destinationPath = dPath,
                                   fun = "data.table::fread")
     setnames(sim$PSPclimData, old = c("id1", "id2"), new = c("OrigPlotID1", "OrigPlotID2"))
+    sim$PSPclimData <- sim$PSPclimData[MAT != -9999] #missing plots get -9999 as variable
   }
 
   if (!suppliedElsewhere("ATAstack", sim)) {
