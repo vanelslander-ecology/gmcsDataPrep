@@ -35,9 +35,9 @@ defineModule(sim, list(
     defineParameter("cacheClimateRas", "logical", TRUE, NA, NA, desc = "should reprojection of climate rasters be cached every year?
     This will result in potentially > 100 rasters being cached"),
     defineParameter("growthModel", class = "call", quote(glmmPQL(growth ~ logAge*(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
-                                    weights = scale(PSPmodelData$plotSize^0.5 * PSPmodelData$periodLength, center = FALSE),
-                                    data = PSPmodelData, family = "Gamma"(link='log'))),
-                 NA, NA, desc = "Quoted model used to predict growth in PSP data as a function of logAge, CMI, ATA, and
+                                                                 weights = scale(PSPmodelData$plotSize^0.5 * PSPmodelData$periodLength, center = FALSE),
+                                                                 data = PSPmodelData, family = "Gamma"(link='log'))),
+                    NA, NA, desc = "Quoted model used to predict growth in PSP data as a function of logAge, CMI, ATA, and
                  their interactions, with PlotID as a random effect"),
     defineParameter("nullGrowthModel", class = "call",
                     quote(nlme::lme(growth ~ logAge + logAge^2, random = ~1 | OrigPlotID1,
@@ -49,23 +49,27 @@ defineModule(sim, list(
                     desc = "a null model used only for comparative purposes"),
     defineParameter("mortalityModel", class = "call",
                     quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI + logAge^2*(ATA + CMI),
-                                   LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
-                                 sigma.formula = ~logAge + ATA,  nu.formula = ~logAge, family = ZAIG, data = PSPmodelData)),
-                    NA, NA, desc = paste("Quoted model used to predict mortality in PSP data as a function of logAge, CMI, ATA, and",
-                 "their interactions, with PlotID as a random effect. Defaults to zero-inflated inverse gaussian glm that requires",
-                    "custom LandR.CS predict function to predict...for now")),
+                                 LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
+                                 sigma.formula = ~logAge + ATA,  nu.formula = ~logAge, family = ZAIG, data = PSPmodelData)), NA, NA,
+                    desc = paste("Quoted model used to predict mortality in PSP data as a function of logAge, CMI, ATA, and",
+                                 "their interactions, with PlotID as a random effect. Defaults to zero-inflated inverse gaussian",
+                                 "glm that requires custom LandR.CS predict function to predict...for now")),
     defineParameter("GCM", "character", "CCSM4_RCP4.5", NA, NA,
                     desc = paste("if using default climate data, the global climate model and rcp scenario to use.",
                                  "Defaults to CanESM2_RCP4.5. but other available options include CanESM2_RCP4.5 and CCSM4_RCP8.5.",
                                  "These were all generated using a 3 Arc-Minute DEM covering forested ecoregions of Canada.",
                                  "If ATA and CMI are supplied by the user, this parameter is ignored.")),
-    defineParameter("PSPvalidationPeriod", "numeric",c(1958, 2018), NA, NA,
-                    desc = paste("the period to build the validation dataset. Subsequent observations are used only if they",
-                     "are within this period, but outside the fitting period. E.g., Successive measurements in 2004 and 2017",
-                    "would be used to build validation data, even if the first measurement fell within the 2011 fitting period",
-                    "as the 2011 cutoff would remove this paired obsevation from the fitting data")),
+    defineParameter("PSPvalidationPeriod", "numeric", NULL, NA, NA,
+                    desc = paste("the period to build the validation dataset. Must be greater than PSPperiod, e.g. c(1958-2018),",
+                                 "Subsequent observations are used only if they are within this period,",
+                                 "but outside the fitting period. E.g. Successive measurements in 2004 and 2017",
+                                 "would be used even though the first measurement falls outside the 2011 fitting period",
+                                 "as the 2011 cutoff would remove this paired obsevation from the fitting data.",
+                                 "If NULL, then validation dataset will instead be randomly sampled from available measurements.")),
+    defineParameter("validationProportion", "numeric", 0.20, 0, 1,
+                    desc = "proportion of data to use in validation set. Will be overridden by PSPvalidationPeriod"),
     defineParameter("yearOfFirstClimateImpact", 'numeric', 2011, NA, NA,
-                    desc = paste("the first year for which to calculate climate impacts. For years preceeding this parameter"))
+                    desc = paste("the first year for which to calculate climate impacts"))
   ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
@@ -181,29 +185,40 @@ Init <- function(sim) {
                             useCache = P(sim)$.useCache,
                             userTags = c("gmcsDataPrep", "prepModelData"))
 
-  #TODO: investigate whether this needs to be added/removed from global environment
-  #to predict, gamlss requires data.frame in global env, so likely yes
-  #but I'm not sure if validation occurs here, automated, manual etc.
-  #TODO: also this would be more efficient to create a single dataset and subtract data for validation
-  #probably by grepping any observation with period greater than max(PSPperiod)?
+  ####building validation data####
   message("Preparing validation dataset")
-  sim$PSPvalidationData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
-                                 PSPgis = sim$PSPgis,
-                                 PSPmeasure = sim$PSPmeasure,
-                                 PSPplot = sim$PSPplot,
-                                 PSPclimData = sim$PSPclimData,
-                                 useHeight = P(sim)$useHeight,
-                                 biomassModel = P(sim)$biomassModel,
-                                 PSPperiod = P(sim)$PSPvalidationPeriod,
-                                 minDBH = P(sim)$minDBH,
-                                 useCache = P(sim)$.useCache,
-                                 userTags = c("gmcsDataPrep", "prepValidationData"))
+  if (!is.null(sim$PSPvalidationPeriod)) {
+    #build validation data from observations in PSPvalidationPeriod that also aren't in model data
+    sim$PSPvalidationData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
+                                   PSPgis = sim$PSPgis,
+                                   PSPmeasure = sim$PSPmeasure,
+                                   PSPplot = sim$PSPplot,
+                                   PSPclimData = sim$PSPclimData,
+                                   useHeight = P(sim)$useHeight,
+                                   biomassModel = P(sim)$biomassModel,
+                                   PSPperiod = P(sim)$PSPvalidationPeriod,
+                                   minDBH = P(sim)$minDBH,
+                                   useCache = P(sim)$.useCache,
+                                   userTags = c("gmcsDataPrep", "prepValidationData"))
 
-  #this removes all observations that are identical
-  sim$PSPvalidationData <- setkey(sim$PSPvalidationData)[!sim$PSPmodelData]
-  #this removes all observations for which there is no random effect in the fitting data
-  sim$PSPvalidationData <- sim$PSPvalidationData[OrigPlotID1 %in% sim$PSPmodelData$OrigPlotID1,]
+    #this removes all observations that are identical
+    sim$PSPvalidationData <- setkey(sim$PSPvalidationData)[!sim$PSPmodelData]
+    #this removes all observations for which there is no random effect in the fitting data
+    sim$PSPvalidationData <- sim$PSPvalidationData[OrigPlotID1 %in% sim$PSPmodelData$OrigPlotID1,]
+  } else {
 
+    # sample validation data from PSPmodelData
+    outData <- Cache(prepValidationData,
+                     PSPmodelData = sim$PSPmodelData,
+                     validationProportion = P(sim)$validationProportion,
+                     useCache = P(sim)$.useCache,
+                     userTags = c("gmcsDataPrep", "prepValidationData"))
+    sim$PSPmodelData <- outData$PSPmodelData #with some plots removed
+    sim$PSPvalidationData <- outData$PSPvalidationData
+
+  }
+
+  ####model building####
   sim$gcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
                                  model = P(sim)$growthModel,
                                  type = "growth")
@@ -344,7 +359,8 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
                                    'CMI' = mean(CMI), 'CMIA' = mean(CMIA),
                                    'AT' = mean(AT), "ATA" = mean(ATA), 'standAge' = mean(standAge),
                                    'logAge' = mean(logAge), "periodLength" = mean(periodLength),
-                                   'year' = mean(year), 'plotSize' = mean(plotSize)), by = c("OrigPlotID1", "period")]
+                                   'year' = mean(year), 'plotSize' = mean(plotSize)),
+                               by = c("OrigPlotID1", "period")]
 
   return(PSPmodelData)
 }
@@ -482,8 +498,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
   return(yearRas)
 }
 
-#moved this function out of lapply so the 3.5 GB environment isnt cached everytime
-pspIntervals <- function(i, M, P, Clim){
+pspIntervals <- function(i, M, P, Clim) {
 
   #Calculate climate variables.
   #ACMI and ATA were added individually in separate model
@@ -532,7 +547,8 @@ pspIntervals <- function(i, M, P, Clim){
   #Leaving this in nonetheless, in case we change methods
   #Unobserved recruits U = N * R * M * L
   #N = # of trees with DBH between 10 and 15
-  # N <- nrow(m2[DBH <= 15]) #TODO ask Yong if this is m2, or total
+  # N <- nrow(t2[DBH <= 15]) # where t2 = the second measurement
+  # (I changed t from it's original 'm', to avoid confusion with metres squared and M mortality)
   # #R = number of recruits between two successive censuses (trees in t2 not in t1)/census length
   # R <- nrow(newborn)/censusLength/N #I am not 100% sure if we divide by N or total stems in plot
   # #M = Mortality rate, n-trees with DBH 10 -15 that died between two census/interval length
@@ -540,7 +556,7 @@ pspIntervals <- function(i, M, P, Clim){
   # #L = census interval length
   # #Next calculate the median growth of the 10-15 DBH class, assume they grew to midpoint.
   # UnobservedR <- N * R * M * censusLength
-  # UnobservedM <- UnobservedR * median(m2$biomass[m2$DBH <= 15])/censusLength/2
+  # UnobservedM <- UnobservedR * median(t2$biomass[t2$DBH <= 15])/censusLength/2
   # #assume unobserved trees died at midpoint. I think this overestimates growth and mortality
   # totalM <- UnobservedM + observedMortality
   # totalG <- UnobservedM + observedGrowth
@@ -584,6 +600,7 @@ sumPeriod <- function(x, rows, m, p, clim){
   x <- rows[x,]
   #Duplicate plots arise from variable 'stand' (OrigPlotID2) that varied within the same plot.
   #this has been corrected by treating these as new plot ids.
+  #note OrigPlotID2 has been removed in latest edition of PSPs, as stand/plot fields were concatenated
   #TODO: review this code and confirm if it is still necessary
   #Tree No. is not unique between stands, which means the same plot can have duplicate trees.
   #sort by year. Calculate the changes in biomass, inc. unobserved growth and mortality
