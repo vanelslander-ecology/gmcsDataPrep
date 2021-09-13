@@ -7,7 +7,9 @@ defineModule(sim, list(
   name = "gmcsDataPrep",
   description = NA, #"insert module description here",
   keywords = NA, # c("insert key words here"),
-  authors = c(person(c("Ian", "MS"), "Eddy", email = "ian.eddy@canada.ca", role = c("aut", "cre"))),
+  authors = c(
+    person(c("Ian", "MS"), "Eddy", email = "ian.eddy@canada.ca", role = c("aut", "cre"))
+  ),
   childModules = character(0),
   version = list(SpaDES.core = "0.2.4", gmcsDataPrep = "0.0.1"),
   spatialExtent = raster::extent(rep(NA_real_, 4)),
@@ -15,30 +17,43 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list('data.table', 'sf', 'sp', 'raster', 'nlme', 'crayon', 'glmm',
-                  "PredictiveEcology/LandR@development", "MASS", "gamlss", "LandR.CS", 'PredictiveEcology/pemisc@development'),
+  reqdPkgs = list('crayon', 'data.table', 'gamlss', 'glmm', "MASS", 'nlme', 'sf', 'sp', 'raster',
+                  "ianmseddy/LandR.CS@development",
+                  "PredictiveEcology/LandR@development",
+                  'PredictiveEcology/pemisc@development'),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".useCache", "logical", FALSE, NA, NA,
                     desc = "Should this entire module be run with caching activated?
                     This is generally intended for data-type modules, where stochasticity and time are not relevant"),
-    defineParameter("PSPperiod", "numeric", c(1958, 2011), NA, NA,
-                    desc = "The years by which to compute climate normals and subset sampling plot data.
-                    Must be a vector of at least length 2"),
+    defineParameter("biomassModel", "character", "Lambert2005", NA, NA,
+                    desc =  paste("The model used to calculate biomass from DBH.",
+                                  "Can be either 'Lambert2005' or 'Ung2008'.")),
+    defineParameter("cacheClimateRas", "logical", TRUE, NA, NA,
+                    desc = paste("should reprojection of climate rasters be cached every year?",
+                                 "This will result in potentially > 100 rasters being cached")),
+    defineParameter("GCM", "character", "CCSM4_RCP4.5", NA, NA,
+                    desc = paste("if using default climate data, the global climate model and rcp scenario to use.",
+                                 "Defaults to CanESM2_RCP4.5. but other available options include CanESM2_RCP4.5 and CCSM4_RCP8.5.",
+                                 "These were all generated using a 3 Arc-Minute DEM covering forested ecoregions of Canada.",
+                                 "If ATA and CMI are supplied by the user, this parameter is ignored.")),
+    defineParameter("growthModel", class = "call",
+                    quote(glmmPQL(growth ~ logAge*(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
+                                  weights = scale(PSPmodelData$plotSize^0.5 * PSPmodelData$periodLength, center = FALSE),
+                                  data = PSPmodelData, family = "Gamma"(link = 'log'))),
+                    NA, NA,
+                    desc = paste("Quoted model used to predict growth in PSP data as a function of",
+                                 "logAge, CMI, ATA, and their interactions, with PlotID as a random effect")),
     defineParameter("minDBH", "numeric", 10, 0, NA,
                     desc = "The minimum DBH allowed. Each province uses different criteria for monitoring trees,
                     so absence of entries < min(DBH) does not equate to absence of trees."),
-    defineParameter("useHeight", "logical", FALSE, NA, NA, desc = "Should height be used to calculate biomass (in addition to DBH).
-                    Don't use if studyAreaPSP includes Alberta"),
-    defineParameter("biomassModel", "character", "Lambert2005", NA, NA, desc =  "The model used to calculate biomass from DBH.
-                    Can be either 'Lambert2005' or 'Ung2008'"),
-    defineParameter("cacheClimateRas", "logical", TRUE, NA, NA, desc = "should reprojection of climate rasters be cached every year?
-    This will result in potentially > 100 rasters being cached"),
-    defineParameter("growthModel", class = "call", quote(glmmPQL(growth ~ logAge*(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
-                                                                 weights = scale(PSPmodelData$plotSize^0.5 * PSPmodelData$periodLength, center = FALSE),
-                                                                 data = PSPmodelData, family = "Gamma"(link='log'))),
-                    NA, NA, desc = "Quoted model used to predict growth in PSP data as a function of logAge, CMI, ATA, and
-                 their interactions, with PlotID as a random effect"),
+    defineParameter("mortalityModel", class = "call",
+                    quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI + logAge^2*(ATA + CMI),
+                                 LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
+                                 sigma.formula = ~logAge + ATA,  nu.formula = ~logAge, family = ZAIG, data = PSPmodelData)), NA, NA,
+                    desc = paste("Quoted model used to predict mortality in PSP data as a function of logAge, CMI, ATA, and",
+                                 "their interactions, with PlotID as a random effect. Defaults to zero-inflated inverse gaussian",
+                                 "glm that requires custom LandR.CS predict function to predict...for now")),
     defineParameter("nullGrowthModel", class = "call",
                     quote(nlme::lme(growth ~ logAge + logAge^2, random = ~1 | OrigPlotID1,
                                     weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)), NA, NA,
@@ -47,18 +62,9 @@ defineModule(sim, list(
                     quote(nlme::lme(mortality ~ logAge + logAge^2, random = ~1 | OrigPlotID1,
                                     weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)), NA, NA,
                     desc = "a null model used only for comparative purposes"),
-    defineParameter("mortalityModel", class = "call",
-                    quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI + logAge^2*(ATA + CMI),
-                                 LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
-                                 sigma.formula = ~logAge + ATA,  nu.formula = ~logAge, family = ZAIG, data = PSPmodelData)), NA, NA,
-                    desc = paste("Quoted model used to predict mortality in PSP data as a function of logAge, CMI, ATA, and",
-                                 "their interactions, with PlotID as a random effect. Defaults to zero-inflated inverse gaussian",
-                                 "glm that requires custom LandR.CS predict function to predict...for now")),
-    defineParameter("GCM", "character", "CCSM4_RCP4.5", NA, NA,
-                    desc = paste("if using default climate data, the global climate model and rcp scenario to use.",
-                                 "Defaults to CanESM2_RCP4.5. but other available options include CanESM2_RCP4.5 and CCSM4_RCP8.5.",
-                                 "These were all generated using a 3 Arc-Minute DEM covering forested ecoregions of Canada.",
-                                 "If ATA and CMI are supplied by the user, this parameter is ignored.")),
+    defineParameter("PSPperiod", "numeric", c(1958, 2011), NA, NA,
+                    desc = paste("The years by which to compute climate normals and subset sampling plot data.",
+                                 "Must be a vector of at least length 2.")),
     defineParameter("PSPvalidationPeriod", "numeric", NULL, NA, NA,
                     desc = paste("the period to build the validation dataset. Must be greater than PSPperiod, e.g. c(1958-2018),",
                                  "Subsequent observations are used only if they are within this period,",
@@ -66,6 +72,9 @@ defineModule(sim, list(
                                  "would be used even though the first measurement falls outside the 2011 fitting period",
                                  "as the 2011 cutoff would remove this paired obsevation from the fitting data.",
                                  "If NULL, then validation dataset will instead be randomly sampled from available measurements.")),
+    defineParameter("useHeight", "logical", FALSE, NA, NA,
+                    desc = paste("Should height be used to calculate biomass (in addition to DBH).",
+                                 "Don't use if studyAreaPSP includes Alberta")),
     defineParameter("validationProportion", "numeric", 0.20, 0, 1,
                     desc = "proportion of data to use in validation set. Will be overridden by PSPvalidationPeriod"),
     defineParameter("yearOfFirstClimateImpact", 'numeric', 2011, NA, NA,
@@ -74,7 +83,7 @@ defineModule(sim, list(
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = "ATAstack", objectClass = "RasterStack",
-                 desc = paste("annual projected mean annual temperature anomalies, units stored as tenth of a degree"),
+                 desc = "annual projected mean annual temperature anomalies, units stored as tenth of a degree",
                  sourceURL = NA),
     expectsInput(objectName = "CMIstack", objectClass = "RasterStack",
                  desc = "annual projected mean climate moisture deficit",
@@ -90,7 +99,7 @@ defineModule(sim, list(
     expectsInput(objectName = "PSPclimData", objectClass = "data.table",
                  desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA with csv",
                               "Temp is represented as degrees, not tenth of degrees as with the raster data"),
-                 sourceURL = "https://drive.google.com/file/d/1wFRcMc4iS84FrsWCT414EZncA_1Uo7Qi/view?usp=sharing"),
+                 sourceURL = "https://drive.google.com/file/d/1wFRcMc4iS84FrsWCT414EZncA_1Uo7Qi"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
                  desc = "template raster for ATA and CMI"),
     expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame",
@@ -102,10 +111,6 @@ defineModule(sim, list(
                  sourceURL = NA)
   ),
   outputObjects = bindrows(
-    createsOutput(objectName = "PSPmodelData", objectClass = "data.table",
-                  desc = "PSP growth mortality calculations"),
-    createsOutput(objectName = "PSPvalidationData", objectClass = "data.table",
-                  desc = "validation dataset for testing model"),
     createsOutput(objectName = 'CMI', objectClass = "RasterLayer",
                   desc = "climate moisture deficit at time(sim), resampled using rasterToMatch"),
     createsOutput(objectName = 'ATA', objectClass = "RasterLayer",
@@ -113,8 +118,12 @@ defineModule(sim, list(
     createsOutput(objectName = "gcsModel", objectClass = "ModelObject?",
                   desc = "growth mixed effect model with normalized log(age), ATA, and CMI as predictors"),
     createsOutput(objectName = "mcsModel", objectClass = "ModelObject?",
-                  desc = "mortality mixed effect model with normalized log(age), ATA, and CMI as predictors")
-    )
+                  desc = "mortality mixed effect model with normalized log(age), ATA, and CMI as predictors"),
+    createsOutput(objectName = "PSPmodelData", objectClass = "data.table",
+                  desc = "PSP growth mortality calculations"),
+    createsOutput(objectName = "PSPvalidationData", objectClass = "data.table",
+                  desc = "validation dataset for testing model")
+  )
 ))
 
 ## event types
@@ -163,7 +172,6 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-
   #stupid-catch
   if (length(P(sim)$PSPperiod) < 2) {
     stop("Please supply P(sim)$PSPperiod of length 2 or greater")
@@ -285,7 +293,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
 
   #Join data (should be small enough by now)
   PSPmeasure <- PSPmeasure[PSPplot, on = c('MeasureID', 'OrigPlotID1', 'MeasureYear')]
-  PSPmeasure[, c('Longitude', 'Latitude', 'Easting', 'Northing', 'Zone'):= NULL]
+  PSPmeasure[, c('Longitude', 'Latitude', 'Easting', 'Northing', 'Zone') := NULL]
 
 
   #Restrict to trees > minDBH
@@ -399,10 +407,10 @@ foo <- function(mod, dat) {
 
   #to ensure convergence, test whether quoted mod is the default first. How to ensure convergence for user-passed models?
   #changed to identical from == - test
-  if (identical(mod, defaultModel)){
+  if (identical(mod, defaultModel)) {
     i <- 1
     while (!gmcsModel$converged & i <= 2) {
-      i <- i+1
+      i <- i + 1
       gmcsModel <- refit(gmcsModel)
     }
   }
@@ -411,7 +419,7 @@ foo <- function(mod, dat) {
 
 resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClimateRas, firstYear) {
   # Restructured to test time for number of characters (entering time as XX or YYYY)
-  if (nchar(time) <= 3){
+  if (nchar(time) <= 3) {
     time <- time + 2001 #2001 is purely arbirtary for Tati's sake due to kNN - boo relative years
     message(paste0("Time entered is < 1900. Temporarily converting your current time as ",
                    crayon::yellow("time + 2001"),
@@ -429,23 +437,22 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
   if (length(currentRas) > 0) {
     #if useCache is False, this generates 6 messages a year.
 
-    if(!compareRaster(stack[[currentRas]], rtm, stopiffalse = FALSE)) {
-      yearRas <-
-      suppressWarnings(
+    if (!compareRaster(stack[[currentRas]], rtm, stopiffalse = FALSE)) {
+      yearRas <- suppressWarnings({
         postProcess(stack[[currentRas]],
                     rasterToMatch = rtm,
                     studyArea = studyArea,
                     filename2 = NULL,
                     method = "bilinear",
                     useCache = cacheClimateRas)
-      )
+      })
     } else {
       yearRas <- stack[[currentRas]]
     }
 
     #need to suppress warnings about resampling method - it SHOULD be bilinear
 
-    if (all(is.na(getValues(yearRas)))){
+    if (all(is.na(getValues(yearRas)))) {
       #this shouldn't occur unless due to bugs in ClimateNA
       message(crayon::yellow(paste0(names(yearRas),
                                     " for this specific study area is all NA. Using previous years' raster ("
@@ -458,10 +465,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
                              method = "bilinear",
                              useCache =  cacheClimateRas)
     }
-
-
   } else {
-    if (time > 2100){
+    if (time > 2100) {
       message(crayon::yellow(paste0("The current time (", time,") is > 2100 and there are no predictions for this year.
                                     Using climate predictions for 2100")))
       currentRas <- raster::nlayers(stack)
@@ -502,20 +507,16 @@ pspIntervals <- function(i, M, P, Clim) {
 
   #Calculate climate variables.
   #ACMI and ATA were added individually in separate model
-  CMI <- mean(Clim$CMI[Clim$Year >= P$MeasureYear[i] &
-                         Clim$Year <= P$MeasureYear[i+1]])
-  ACMI <- mean(Clim$CMI[Clim$Year >= P$MeasureYear[i] &
-                          Clim$Year <= P$MeasureYear[i+1]]) - P$CMI[1]
-  ATA <- mean(Clim$MAT[Clim$Year >= P$MeasureYear[i] &
-                         Clim$Year <= P$MeasureYear[i+1]]) - P$MAT[1]
-  AT <- mean(Clim$MAT[Clim$Year >= P$MeasureYear[i] &
-                        Clim$Year <= P$MeasureYear[i+1]])
-  period <- paste0(P$MeasureYear[i], "-", P$MeasureYear[i+1])
+  CMI <- mean(Clim$CMI[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]])
+  ACMI <- mean(Clim$CMI[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]]) - P$CMI[1]
+  ATA <- mean(Clim$MAT[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]]) - P$MAT[1]
+  AT <- mean(Clim$MAT[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]])
+  period <- paste0(P$MeasureYear[i], "-", P$MeasureYear[i + 1])
 
   m1 <- M[MeasureYear == P$MeasureYear[i]]
   m2 <- M[MeasureYear == P$MeasureYear[i + 1]]
   censusLength <- P$MeasureYear[i + 1] - P$MeasureYear[i]
-  year <- ceiling(sum(P$MeasureYear[i] + P$MeasureYear[i + 1])/2)
+  year <- ceiling(sum(P$MeasureYear[i] + P$MeasureYear[i + 1]) / 2)
   living1 <- m1[m1$TreeNumber %in% m2$TreeNumber]
   living2 <- m2[m2$TreeNumber %in% m1$TreeNumber]
   dead <- m1[!m1$TreeNumber %in% m2$TreeNumber]
@@ -533,12 +534,12 @@ pspIntervals <- function(i, M, P, Clim) {
   #growth cannot be negative by definition. So if a reduction in DBH occured, this will count as 0
   living[newGrowth < 0, newGrowth := 0]
 
-  newborn <- newborn[, .(newGrowth = sum(biomass)/(censusLength/2),
-                         biomass = sum(biomass)/(censusLength/2)),
+  newborn <- newborn[, .(newGrowth = sum(biomass) / (censusLength / 2),
+                         biomass = sum(biomass) / (censusLength / 2)),
                      c("Species", "newSpeciesName")] %>%
     setkey(., Species, newSpeciesName)
   #measure from census midpoint for new seedlings
-  dead <- dead[, .(mortality = sum(biomass)/censusLength), by = c("Species", "newSpeciesName")] %>%
+  dead <- dead[, .(mortality = sum(biomass) / censusLength), by = c("Species", "newSpeciesName")] %>%
     setkey(., Species, newSpeciesName)
 
   #Find unobserved growth and mortality.
@@ -584,7 +585,7 @@ pspIntervals <- function(i, M, P, Clim) {
   changes$ATA <- ATA
   changes$OrigPlotID1 <- P$OrigPlotID1[1]
   changes$year <- year
-  changes$standAge <- P$baseSA[1] + P$MeasureYear[i+1] - P$MeasureYear[1]
+  changes$standAge <- P$baseSA[1] + P$MeasureYear[i + 1] - P$MeasureYear[1]
   changes$logAge <- log(changes$standAge)
   changes$plotSize <- P$PlotSize[1]
   changes$periodLength <- censusLength
@@ -707,7 +708,6 @@ sumPeriod <- function(x, rows, m, p, clim){
   }
 
   if (!suppliedElsewhere("CMInormal", sim)) {
-
     sim$CMInormal <- prepInputs(targetFile = 'Canada3ArcMinute_normalCMI.grd',
                                 archive = 'Canada3ArcMinute_normalCMI.zip',
                                 url = 'https://drive.google.com/open?id=16YMgx9t2eW8-fT5YyW0xEbjKODYNCiys',
