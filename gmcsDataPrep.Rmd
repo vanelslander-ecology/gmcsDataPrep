@@ -23,6 +23,8 @@ For help writing in R Markdown, see http://rmarkdown.rstudio.com/.
 ```{r module_usage}
 library(SpaDES)
 library(LandR)
+library(sf)
+library(fasterize)
 library(raster)
 
 setPaths(modulePath = file.path("../"))
@@ -30,18 +32,49 @@ getPaths() # shows where the 4 relevant paths are
 
 times <- list(start = 2011, end = 2012)
 
-parameters <- list(
-  #.progress = list(type = "text", interval = 1), # for a progress bar
-  ## If there are further modules, each can have its own set of parameters:
-  #module1 = list(param1 = value1, param2 = value2),
-  #module2 = list(param1 = value1, param2 = value2)
-)
-
+#the study area isn't necessary to test models - it is only used to satisfy climate data prep. Smaller is better
 studyArea <- randomStudyArea(size=  10000*6.25*400)
 templateRaster <- raster(extent(studyArea), crs = crs(studyArea), res = c(500,500))
 templateRaster <- setValues(templateRaster, 1)
-modules <- list("gmcsDataPrep", "PSP_Clean")
-objects <- list(studyArea = studyArea, rasterToMatch = templateRaster)
+
+#this is the continugous ecoregions of the RIA. It is suggested that users pass a studyAreaPSP 
+#it should represent a geographic area where trees would be expected to have a similar climate response
+studyAreaPSP <- prepInputs(url = 'https://drive.google.com/open?id=10yhleaumhwa3hAv_8o7TE15lyesgkDV_',
+                                 destinationPath = tempdir())
+
+parameters <- list(
+  gmcsDataPrep = list(
+    "minDBH" = 9, #the minimum DBH varies over time and space, so 9+ is recommended
+    "useHeight" = TRUE,
+    ".useCache" = FALSE,
+    "PSPdataTypes" = "all",
+    "PSPab_damageColsToExclude" = NULL,
+    "PSPbc_damageColsToExclude" = NULL,
+    "PSPnfi_damageColsToExclude" = NULL,
+    "PSPperiod" = c(1958,2019),
+    #an alternative mortality model - gamma not possible due to 0 
+    "mortalityModel" = quote(glmmPQL(mortality ~ logAge*(ATA + CMI) + logAge^2 *(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
+                                    weights = scale(PSPmodelData$plotSize^0.5 * PSPmodelData$periodLength, center = FALSE),
+                                    data = PSPmodelData, family = "gaussian"(link = 'identity'))),
+    #the 'new' growth model with quadratic. 
+    "growthModel" = quote(glmmPQL(growth ~ logAge*(ATA + CMI) + logAge^2 * (CMI + ATA) + ATA:CMI, random = ~1 | OrigPlotID1,
+                                    weights = scale(PSPmodelData$plotSize^0.5 * PSPmodelData$periodLength, center = FALSE),
+                                    data = PSPmodelData, family = 'Gamma'(link = 'log'))),
+    #the original model with quadratic term
+    # "growthModel" = quote(nlme::lme(growth ~ logAge*(ATA + CMI) + logAge^2 *(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
+    #                                 weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)),
+    #Yong's original growth model
+    # "growthModel" = quote(nlme::lme(growth ~ logAge*(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
+    #                                  weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)),
+    "PSPvalidationPeriod" = NULL #pass NULL to instead randomly sample the validation data
+  )
+)
+
+
+modules <- list("gmcsDataPrep")
+objects <- list(studyArea = studyArea, 
+                rasterToMatch = templateRaster,
+                studyAreaPSP = studyAreaPSP)
 inputs <- list()
 outputs <- list()
 
@@ -49,7 +82,11 @@ mySim <- simInit(times = times, params = parameters, modules = modules,
                  objects = objects)
 
 mySimOut <- spades(mySim)
+
 ```
+
+
+
 
 # Events
 

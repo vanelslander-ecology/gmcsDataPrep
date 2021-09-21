@@ -8,19 +8,20 @@ defineModule(sim, list(
   description = NA, #"insert module description here",
   keywords = NA, # c("insert key words here"),
   authors = c(
-    person(c("Ian", "MS"), "Eddy", email = "ian.eddy@canada.ca", role = c("aut", "cre"))
+    person(c("Ian", "MS"), "Eddy", email = "ian.eddy@nrcan-rncan.gc.ca", role = c("aut", "cre"))
   ),
   childModules = character(0),
-  version = list(SpaDES.core = "0.2.4", gmcsDataPrep = "0.0.1"),
+  version = list(SpaDES.core = "0.2.4", gmcsDataPrep = "0.0.2"),
   spatialExtent = raster::extent(rep(NA_real_, 4)),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list('crayon', 'data.table', 'gamlss', 'glmm', "MASS", 'nlme', 'sf', 'sp', 'raster',
+  reqdPkgs = list("crayon", "data.table", "gamlss", "glmm", "MASS", "nlme", "sf", "sp", "raster",
                   "ianmseddy/LandR.CS@development",
+                  "ianmseddy/PSPclean",
                   "PredictiveEcology/LandR@development",
-                  'PredictiveEcology/pemisc@development'),
+                  "PredictiveEcology/pemisc@development (>= 0.0.3.9002)"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".useCache", "logical", FALSE, NA, NA,
@@ -62,6 +63,19 @@ defineModule(sim, list(
                     quote(nlme::lme(mortality ~ logAge + logAge^2, random = ~1 | OrigPlotID1,
                                     weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)), NA, NA,
                     desc = "a null model used only for comparative purposes"),
+    defineParameter("PSPab_damageColsToExclude", "numeric",3, NA, NA,
+                    desc = paste("if sourcing Alberta PSP, which tree damage sources to exclude, if any.",
+                                 "Defaults to Mountain Pine Beetle. Codes can be found in GOA PSP Manual.",
+                                 "Any damage sources that are not excluded are modelled as endogenous climate impact")),
+    defineParameter("PSPbc_damageColsToExclude", "character", "IBM", NA, NA,
+                    desc = paste("if sourcing BC PSP, which tree damage sources to exclude, if any. Defaults to Mountain Pine Beetle.",
+                                 "Any damage sources that are not excluded are modelled as endogenous climate impact")),
+    defineParameter("PSPnfi_damageColsToExclude", "character", "IB", NA, NA,
+                    desc = paste("if sourcing NFI PSP, which tree damage sources to exclude, if any. Defaults to bark beetles.",
+                                 "Any damage sources that are not excluded are modelled as endogenous climate impact")),
+    defineParameter("PSPdataTypes", "character", "all", NA, NA,
+                    desc = paste("Which PSP datasets to source, defaulting to all. Other available options include",
+                                 "'BC', 'AB', 'SK', 'NFI', and 'dummy'. 'dummy' should be used for unauthorized users.")),
     defineParameter("PSPperiod", "numeric", c(1958, 2011), NA, NA,
                     desc = paste("The years by which to compute climate normals and subset sampling plot data.",
                                  "Must be a vector of at least length 2.")),
@@ -72,9 +86,9 @@ defineModule(sim, list(
                                  "would be used even though the first measurement falls outside the 2011 fitting period",
                                  "as the 2011 cutoff would remove this paired obsevation from the fitting data.",
                                  "If NULL, then validation dataset will instead be randomly sampled from available measurements.")),
-    defineParameter("useHeight", "logical", FALSE, NA, NA,
-                    desc = paste("Should height be used to calculate biomass (in addition to DBH).",
-                                 "Don't use if studyAreaPSP includes Alberta")),
+    defineParameter("useHeight", "logical", TRUE, NA, NA,
+                    desc = paste("Use height be used to calculate biomass (in addition to DBH). If height is NA for individual",
+                                 "trees, then only DBH will be used for those measurements")),
     defineParameter("validationProportion", "numeric", 0.20, 0, 1,
                     desc = "proportion of data to use in validation set. Will be overridden by PSPvalidationPeriod"),
     defineParameter("yearOfFirstClimateImpact", 'numeric', 2011, NA, NA,
@@ -83,23 +97,21 @@ defineModule(sim, list(
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = "ATAstack", objectClass = "RasterStack",
-                 desc = "annual projected mean annual temperature anomalies, units stored as tenth of a degree",
-                 sourceURL = NA),
+                 desc = "annual projected mean annual temperature anomalies, units stored as tenth of a degree"),
     expectsInput(objectName = "CMIstack", objectClass = "RasterStack",
-                 desc = "annual projected mean climate moisture deficit",
-                 sourceURL = NA),
+                 desc = "annual projected mean climate moisture deficit"),
     expectsInput(objectName = "CMInormal", objectClass = "RasterLayer",
                  desc = "Climate Moisture Index Normals from 1950-2010"),
-    expectsInput(objectName = 'PSPmeasure', objectClass = 'data.table',
-                 desc = "PSP data for individual measures", sourceURL = NA),
-    expectsInput(objectName = 'PSPplot', objectClass = 'data.table',
-                 desc = "PSP data for each plot", sourceURL = NA),
-    expectsInput(objectName = 'PSPgis', objectClass = 'data.table',
-                 desc = "PSP plot data as sf object", sourceURL = NA),
+    expectsInput(objectName = 'PSPmeasure_gmcs', objectClass = 'data.table', desc = "standardized tree measurements for PSPs",
+                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/view?usp=sharing"),
+    expectsInput(objectName = 'PSPplot_gmcs', objectClass = 'data.table', desc = "standardized plot-level attributes for PSPs",
+                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/view?usp=sharing"),
+    expectsInput(objectName = 'PSPgis_gmcs', objectClass = 'data.table', desc = "PSP plot data as sf object",
+                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/view?usp=sharing"),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table",
                  desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA with csv",
                               "Temp is represented as degrees, not tenth of degrees as with the raster data"),
-                 sourceURL = "https://drive.google.com/file/d/1wFRcMc4iS84FrsWCT414EZncA_1Uo7Qi"),
+                 sourceURL = "https://drive.google.com/file/d/1jCp0K9wW6AQflVu8AojU_zSNYxt3m6Yk/view?usp=sharing"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
                  desc = "template raster for ATA and CMI"),
     expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame",
@@ -107,8 +119,7 @@ defineModule(sim, list(
     expectsInput(objectName = 'studyAreaPSP', objectClass = 'SpatialPolygonsDataFrame',
                  desc = paste("this area will be used to subset PSP plots before building the statistical model.",
                               "Currently PSP datasets with repeat measures exist only for Saskatchewan,",
-                              "Alberta, and Boreal British Columbia"),
-                 sourceURL = NA)
+                              "Alberta, and Boreal British Columbia"), sourceURL = NA)
   ),
   outputObjects = bindrows(
     createsOutput(objectName = 'CMI', objectClass = "RasterLayer",
@@ -177,14 +188,14 @@ Init <- function(sim) {
     stop("Please supply P(sim)$PSPperiod of length 2 or greater")
   }
 
-  if (any(is.null(sim$PSPmeasure), is.null(sim$PSPplot), is.null(sim$PSPgis))) {
+  if (any(is.null(sim$PSPmeasure_gmcs), is.null(sim$PSPplot_gmcs), is.null(sim$PSPgis_gmcs))) {
     stop("The PSP objects are being supplied incorrectly. Please review loadOrder argument in simInit")
   }
 
   sim$PSPmodelData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
-                            PSPgis = sim$PSPgis,
-                            PSPmeasure = sim$PSPmeasure,
-                            PSPplot = sim$PSPplot,
+                            PSPgis = sim$PSPgis_gmcs,
+                            PSPmeasure = sim$PSPmeasure_gmcs,
+                            PSPplot = sim$PSPplot_gmcs,
                             PSPclimData = sim$PSPclimData,
                             useHeight = P(sim)$useHeight,
                             biomassModel = P(sim)$biomassModel,
@@ -198,9 +209,9 @@ Init <- function(sim) {
   if (!is.null(sim$PSPvalidationPeriod)) {
     #build validation data from observations in PSPvalidationPeriod that also aren't in model data
     sim$PSPvalidationData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
-                                   PSPgis = sim$PSPgis,
-                                   PSPmeasure = sim$PSPmeasure,
-                                   PSPplot = sim$PSPplot,
+                                   PSPgis = sim$PSPgis_gmcs,
+                                   PSPmeasure = sim$PSPmeasure_gmcs,
+                                   PSPplot = sim$PSPplot_gmcs,
                                    PSPclimData = sim$PSPclimData,
                                    useHeight = P(sim)$useHeight,
                                    biomassModel = P(sim)$biomassModel,
@@ -312,15 +323,39 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
 
   #subset by biomass, because some plots have no species that can be estimated
  #These will be counted in the 30 trees requirement, but may result in a plot of NA biomass if repeat measures = 2+
-  tempOut <- biomassCalculation(species = PSPmeasure$newSpeciesName,
-                                DBH = PSPmeasure$DBH,
-                                height = PSPmeasure$Height,
-                                includeHeight = useHeight,
-                                equationSource = biomassModel)
+
+  if (useHeight) {
+    PSPmeasureNoHeight <- PSPmeasure[is.na(Height)]
+    PSPmeasureHeight <- PSPmeasure[!is.na(Height)]
+    tempOut <- biomassCalculation(species = PSPmeasureHeight$newSpeciesName,
+                                  DBH = PSPmeasureHeight$DBH,
+                                  height = PSPmeasureHeight$Height,
+                                  includeHeight = TRUE,
+                                  equationSource = biomassModel)
+    #check if height is missing, join if so -- function fails if data.table is empty
+    if (nrow(PSPmeasureNoHeight) > 0) {
+      tempOutNoHeight <- biomassCalculation(species =PSPmeasureNoHeight$newSpeciesName,
+                                            DBH = PSPmeasureNoHeight$DBH,
+                                            height = PSPmeasureNoHeight$Height,
+                                            includeHeight = FALSE,
+                                            equationSource = biomassModel)
+      tempOut$biomass <- c(tempOut$biomass, tempOutNoHeight$biomass)
+      tempOut$missedSpecies <- c(tempOut$missedSpecies, tempOutNoHeight$missedSpecies)
+      PSPmeasure <- rbind(PSPmeasureHeight, PSPmeasureNoHeight)
+    }
+    PSPmeasure[, biomass := tempOut$biomass]
+    setkey(PSPmeasure, MeasureID, OrigPlotID1, TreeNumber)
+  } else {
+    tempOut <- biomassCalculation(species = PSPmeasure$newSpeciesName,
+                                  DBH = PSPmeasure$DBH,
+                                  height = PSPmeasure$Height,
+                                  includeHeight = FALSE,
+                                  equationSource = biomassModel)
+    PSPmeasure$biomass <- tempOut$biomass
+  }
+
   message(yellow("No biomass estimate possible for these species: "))
   print(tempOut$missedSpecies)
-  PSPmeasure$biomass <- tempOut$biomass
-
 
   #Filter by 3+ repeat measures - must be last filter criteria.
   #Some plots share ID but have different trees so simple count of plots insufficient to find repeat measures
@@ -627,8 +662,101 @@ sumPeriod <- function(x, rows, m, p, clim){
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
 
-  if (!suppliedElsewhere("PSPmeasure", sim) | !suppliedElsewhere("PSPplot", sim) | !suppliedElsewhere("PSPgis", sim) ) {
-    stop("You have not supplied PSP data. Please run PSP_Clean or supply the objects to simInit")
+  if (!suppliedElsewhere("PSPmeasure_gmcs", sim) |
+      !suppliedElsewhere("PSPplot_gmcs", sim) |
+      !suppliedElsewhere("PSPgis_gmcs", sim) ) {
+    message("sourcing PSP data for gmcsDataPrep...")
+
+    if ("dummy" %in% P(sim)$PSPdataTypes) {
+      message("generating randomized PSP data")
+      sim$PSPmeasure_gmcs <- Cache(prepInputs,
+                                        targetFile = "randomizedPSPmeasure_sppParams.rds",
+                                        archive = "randomized_LandR_speciesParameters_Inputs.zip",
+                                        url =  extractURL('PSPmeasure_gmcs', sim),
+                                        destinationPath = dPath,
+                                        fun = "readRDS")
+
+      sim$PSPplot_gmcs <- Cache(prepInputs,
+                                     targetFile = "randomizedPSPplot_sppParams.rds",
+                                     archive = "randomized_LandR_speciesParameters_Inputs.zip",
+                                     url = extractURL('PSPplot_gmcs', sim),
+                                     destinationPath = dPath,
+                                     fun = "readRDS")
+
+      sim$PSPgis_gmcs <- Cache(prepInputs,
+                                    targetFile = "randomizedPSPgis_sppParams.rds",
+                                    archive = "randomized_LandR_speciesParameters_Inputs.zip",
+                                    url = extractURL('PSPgis_gmcs', sim),
+                                    overwrite = TRUE,
+                                    destinationPath = dPath,
+                                    fun = "readRDS")
+    } else {
+
+      if (!any(c("BC", "AB", "SK", "NFI", "all") %in% P(sim)$PSPdataTypes)) {
+        stop("Please review P(sim)$dataTypes - incorrect value specified")
+      }
+
+      PSPmeasure_gmcs <- list()
+      PSPplot_gmcs <- list()
+
+      if ("BC" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
+        PSPbc <- Cache(prepInputsBCPSP, dPath = dPath, userTags = c(cacheTags, "BCPSP"))
+        PSPbc <- PSPclean::dataPurification_BCPSP(treeDataRaw = PSPbc$treeDataRaw,
+                                                  plotHeaderDataRaw = PSPbc$plotHeaderDataRaw,
+                                                  damageAgentCodes = PSPbc$pspBCdamageAgentCodes,
+                                                  codesToExclude = P(sim)$PSPbc_damageColsToExclude)
+        PSPmeasure_gmcs[["BC"]] <- PSPbc$treeData
+        PSPplot_gmcs[["BC"]] <- PSPbc$plotHeaderData
+      }
+      if ("AB" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
+        PSPab <- Cache(prepInputsAlbertaPSP, dPath = dPath, userTags = c(cacheTags, "ABPSP"))
+        PSPab <- PSPclean::dataPurification_ABPSP(treeMeasure = PSPab$pspABtreeMeasure,
+                                                  plotMeasure = PSPab$pspABplotMeasure,
+                                                  tree = PSPab$pspABtree,
+                                                  plot = PSPab$pspABplot,
+                                                    codesToExclude = P(sim)$PSPab_damageColsToExclude)
+        PSPmeasure_gmcs[["AB"]] <- PSPab$treeData
+        PSPplot_gmcs[["AB"]] <- PSPab$plotHeaderData
+      }
+
+      if ("SK" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
+        PSPsk <- Cache(prepInputsSaskatchwanPSP, dPath = dPath, userTags = c(cacheTags, "SKPSP"))
+        PSPsk <- PSPclean::dataPurification_SKPSP(SADataRaw = PSPsk$SADataRaw,
+                                                  plotHeaderRaw = PSPsk$plotHeaderRaw,
+                                                  measureHeaderRaw = PSPsk$measureHeaderRaw,
+                                                  treeDataRaw = PSPsk$treeDataRaw)
+        PSPmeasure_gmcs[["SK"]] <- PSPsk$treeData
+        PSPplot_gmcs[["SK"]] <- PSPsk$plotHeaderData
+
+        TSPsk <- Cache(prepInputsSaskatchwanTSP, dPath = dPath, userTags = c(cacheTags, "SKTSP"))
+        TSPsk <- PSPclean::dataPurification_SKTSP_Mistik(compiledPlotData = TSPsk$compiledPlotData,
+                                                         compiledTreeData = TSPsk$compiledTreeData)
+        PSPmeasure_gmcs[["SKtsp"]] <- TSPsk$treeData
+        PSPplot_gmcs[["SKtsp"]] <- TSPsk$plotHeaderData
+      }
+
+      if ("NFI" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
+
+        PSPnfi <- Cache(prepInputsNFIPSP, dPath = dPath, userTags = c(cacheTags, "NFIPSP"))
+        PSPnfi <- PSPclean::dataPurification_NFIPSP(lgptreeRaw = PSPnfi$pspTreeMeasure,
+                                                    lgpHeaderRaw = PSPnfi$pspHeader,
+                                                    approxLocation = PSPnfi$pspLocation,
+                                                    treeDamage = PSPnfi$pspTreeDamage,
+                                                    codesToExclude = P(sim)$PSPnfi_damageColsToExclude)
+        PSPmeasure_gmcs[["NFI"]] <- PSPnfi$treeData
+        PSPplot_gmcs[["NFI"]] <- PSPnfi$plotHeaderData
+      }
+
+      PSPmeasure_gmcs <- rbindlist(PSPmeasure_gmcs, fill = TRUE)
+      PSPplot_gmcs <- rbindlist(PSPplot_gmcs, fill = TRUE)
+      PSPgis_gmcs <- geoCleanPSP(Locations = PSPplot_gmcs)
+      #keep only plots with valid coordinates
+      PSPmeasure_gmcs <- PSPmeasure_gmcs[OrigPlotID1 %in% PSPgis_gmcs$OrigPlotID1,]
+      PSPplot_gmcs <- PSPplot_gmcs[OrigPlotID1 %in% PSPgis_gmcs$OrigPlotID1,]
+      sim$PSPmeasure_gmcs <- PSPmeasure_gmcs
+      sim$PSPplot_gmcs <- PSPplot_gmcs
+      sim$PSPgis_gmcs <- PSPgis_gmcs
+    }
   }
 
   if (!suppliedElsewhere("studyArea", sim)) {
@@ -638,10 +766,11 @@ sumPeriod <- function(x, rows, m, p, clim){
 
   if (!suppliedElsewhere("PSPclimData", sim)) {
     sim$PSPclimData <- prepInputs(url = extractURL("PSPclimData"),
-                                  targetFile = "PSPforClimateNA_1901-2019Y.csv",
                                   destinationPath = dPath,
+                                  targetFile = "PSP_climateNAinputs_1901-2019MSY.csv",
                                   fun = "data.table::fread")
     setnames(sim$PSPclimData, old = c("id1", "id2"), new = c("OrigPlotID1", "OrigPlotID2"))
+
     sim$PSPclimData <- sim$PSPclimData[MAT != -9999] #missing plots get -9999 as variable
   }
 
