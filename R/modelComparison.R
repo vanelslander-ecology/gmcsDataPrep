@@ -1,5 +1,4 @@
 compareModels <- function(nullGrowth, nullMortality, gcs, mcs, validationData) {
-
   gcsNLL <- assessNLL(validationData = validationData, gmModel = gcs, observedCol = "growth")
   nullGrowthNLL <- assessNLL(validationData = validationData, gmModel = nullGrowth, observedCol = "growth")
   mcsNLL <- assessNLL(validationData = validationData, gmModel = mcs, observedCol = "mortality")
@@ -15,15 +14,12 @@ compareModels <- function(nullGrowth, nullMortality, gcs, mcs, validationData) {
   if (mcsNLL > nullMortalityNLL) {
     warning("consider revising the climate-sensitive mortality model; it underperforms in comparison with the null model")
   }
-
 }
 
-
 assessNLL <- function(validationData, observedCol, gmModel) {
-
   #not sure if we should keep the prediction col in the dataset...
   validationData <- copy(validationData)
-  validationData[, predictionVar := predict(gmModel, newdata = validationData, type = 'response')]
+  validationData[, predictionVar := predict(gmModel, newdata = validationData, type = "response")]
   validationData[, observed := validationData[, .SD, .SDcol = observedCol]]
   # stdev <- sd(validationData$predictionVar - validationData$observed)
   stdev <- sd(validationData$observed)
@@ -33,8 +29,7 @@ assessNLL <- function(validationData, observedCol, gmModel) {
   return(sumNLL)
 }
 
-prepValidationData <- function(PSPmodelData, validationProportion){
-
+prepValidationData <- function(PSPmodelData, validationProportion) {
   #need at least 3 plots for validation - 2 to estimate model w/ random plot effect, 1+ to validate
   possiblePlots <- PSPmodelData[, .N, .(OrigPlotID1)][N > 2,]
   #calculate the targetN for the validation dataset.
