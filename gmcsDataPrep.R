@@ -1,4 +1,3 @@
-
 # Everything in this file gets sourced during simInit, and all functions and objects
 # are put into the simList. To use objects, use sim$xxx, and are thus globally available
 # to all modules. Functions can be used without sim$ as they are namespaced, like functions
@@ -102,11 +101,11 @@ defineModule(sim, list(
                  desc = "annual projected mean climate moisture deficit"),
     expectsInput(objectName = "CMInormal", objectClass = "RasterLayer",
                  desc = "Climate Moisture Index Normals from 1950-2010"),
-    expectsInput(objectName = 'PSPmeasure_gmcs', objectClass = 'data.table', desc = "standardized tree measurements for PSPs",
+    expectsInput(objectName = "PSPmeasure_gmcs", objectClass = "data.table", desc = "standardized tree measurements for PSPs",
                  sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/view?usp=sharing"),
-    expectsInput(objectName = 'PSPplot_gmcs', objectClass = 'data.table', desc = "standardized plot-level attributes for PSPs",
+    expectsInput(objectName = "PSPplot_gmcs", objectClass = "data.table", desc = "standardized plot-level attributes for PSPs",
                  sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/view?usp=sharing"),
-    expectsInput(objectName = 'PSPgis_gmcs', objectClass = 'data.table', desc = "PSP plot data as sf object",
+    expectsInput(objectName = "PSPgis_gmcs", objectClass = "data.table", desc = "PSP plot data as sf object",
                  sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/view?usp=sharing"),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table",
                  desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA with csv",
@@ -116,15 +115,15 @@ defineModule(sim, list(
                  desc = "template raster for ATA and CMI"),
     expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame",
                  desc = "this area will be used to crop climate rasters", sourceURL = NA),
-    expectsInput(objectName = 'studyAreaPSP', objectClass = 'SpatialPolygonsDataFrame',
+    expectsInput(objectName = "studyAreaPSP", objectClass = "SpatialPolygonsDataFrame",
                  desc = paste("this area will be used to subset PSP plots before building the statistical model.",
                               "Currently PSP datasets with repeat measures exist only for Saskatchewan,",
                               "Alberta, and Boreal British Columbia"), sourceURL = NA)
   ),
   outputObjects = bindrows(
-    createsOutput(objectName = 'CMI', objectClass = "RasterLayer",
+    createsOutput(objectName = "CMI", objectClass = "RasterLayer",
                   desc = "climate moisture deficit at time(sim), resampled using rasterToMatch"),
-    createsOutput(objectName = 'ATA', objectClass = "RasterLayer",
+    createsOutput(objectName = "ATA", objectClass = "RasterLayer",
                   desc = "annual temperature anomaly, resampled using rasterToMatch"),
     createsOutput(objectName = "gcsModel", objectClass = "ModelObject?",
                   desc = "growth mixed effect model with normalized log(age), ATA, and CMI as predictors"),
@@ -223,7 +222,7 @@ Init <- function(sim) {
     #this removes all observations that are identical
     sim$PSPvalidationData <- setkey(sim$PSPvalidationData)[!sim$PSPmodelData]
     #this removes all observations for which there is no random effect in the fitting data
-    sim$PSPvalidationData <- sim$PSPvalidationData[OrigPlotID1 %in% sim$PSPmodelData$OrigPlotID1,]
+    sim$PSPvalidationData <- sim$PSPvalidationData[OrigPlotID1 %in% sim$PSPmodelData$OrigPlotID1, ]
   } else {
 
     # sample validation data from PSPmodelData
@@ -257,7 +256,7 @@ Init <- function(sim) {
                 nullMortality = sim$nullMortalityModel,
                 gcs = sim$gcsModel,
                 mcs = sim$mcsModel,
-                validationData = sim$PSPvalidationData)
+                validationData = sim$PSPvalidationData) ## TODO: output this to disk and get R^2 from NLL
 
   return(invisible(sim))
 }
@@ -265,7 +264,6 @@ Init <- function(sim) {
 prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
                           PSPclimData, useHeight, biomassModel,
                           PSPperiod, minDBH) {
-
   #first remove trees with 9999 as TreeNumber
   PSPmeasure <- PSPmeasure[TreeNumber != '9999']
 
@@ -289,7 +287,6 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
   PSPplot <- PSPplot[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
   PSPclimData <- PSPclimData[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
-
 
   #might as well drop species with no biomass match
 
@@ -320,9 +317,8 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   repeats <- PSPplot[, .(measures = .N), by = OrigPlotID1]
   message(yellow(paste0("There are "), nrow(repeats), " PSPs with min. 30 trees at earliest measurement"))
 
-
-  #subset by biomass, because some plots have no species that can be estimated
- #These will be counted in the 30 trees requirement, but may result in a plot of NA biomass if repeat measures = 2+
+  ## subset by biomass, because some plots have no species that can be estimated
+  ## these will be counted in the 30 trees requirement, but may result in a plot of NA biomass if repeat measures = 2+
 
   if (useHeight) {
     PSPmeasureNoHeight <- PSPmeasure[is.na(Height)]
@@ -334,7 +330,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
                                   equationSource = biomassModel)
     #check if height is missing, join if so -- function fails if data.table is empty
     if (nrow(PSPmeasureNoHeight) > 0) {
-      tempOutNoHeight <- biomassCalculation(species =PSPmeasureNoHeight$newSpeciesName,
+      tempOutNoHeight <- biomassCalculation(species = PSPmeasureNoHeight$newSpeciesName,
                                             DBH = PSPmeasureNoHeight$DBH,
                                             height = PSPmeasureNoHeight$Height,
                                             includeHeight = FALSE,
@@ -409,11 +405,8 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
 }
 
 gmcsModelBuild <- function(PSPmodelData, model, type) {
-
   if (type == 'growth') {
-
     gmcsModel <- Cache(eval, model, envir = environment(), userTags = c("gmcsDataPrep", "growthModel"))
-
   } else {
     assign(x = 'PSPmodelData', value = PSPmodelData, envir = globalenv())
     #This is an obnoxious fix to an gmlss problem that requires objects in global env to predict
@@ -539,7 +532,6 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
 }
 
 pspIntervals <- function(i, M, P, Clim) {
-
   #Calculate climate variables.
   #ACMI and ATA were added individually in separate model
   CMI <- mean(Clim$CMI[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]])
@@ -629,7 +621,6 @@ pspIntervals <- function(i, M, P, Clim) {
   setcolorder(changes, c("OrigPlotID1", "period", "species", "sppLong", "growth", "mortality", "netBiomass",
                          "CMI", "CMIA", "AT", "ATA", "standAge", "logAge", "plotSize", "periodLength"))
   return(changes)
-
 }
 
 sumPeriod <- function(x, rows, m, p, clim){
@@ -656,7 +647,6 @@ sumPeriod <- function(x, rows, m, p, clim){
 }
 
 .inputObjects <- function(sim) {
-
   cacheTags <- c(currentModule(sim), "function:.inputObjects")
 
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
@@ -691,7 +681,6 @@ sumPeriod <- function(x, rows, m, p, clim){
                                     destinationPath = dPath,
                                     fun = "readRDS")
     } else {
-
       if (!any(c("BC", "AB", "SK", "NFI", "all") %in% P(sim)$PSPdataTypes)) {
         stop("Please review P(sim)$dataTypes - incorrect value specified")
       }
@@ -736,7 +725,6 @@ sumPeriod <- function(x, rows, m, p, clim){
       }
 
       if ("NFI" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
-
         PSPnfi <- Cache(prepInputsNFIPSP, dPath = dPath, userTags = c(cacheTags, "NFIPSP"))
         PSPnfi <- PSPclean::dataPurification_NFIPSP(lgptreeRaw = PSPnfi$pspTreeMeasure,
                                                     lgpHeaderRaw = PSPnfi$pspHeader,
@@ -777,17 +765,17 @@ sumPeriod <- function(x, rows, m, p, clim){
   if (!suppliedElsewhere("ATAstack", sim)) {
     #These should not be called using rasterToMatch (stack, memory)
     if (P(sim)$GCM == "CCSM4_RCP4.5") {
-      ata.url <- 'https://drive.google.com/open?id=1sGRp0zNjlQUg6LXpEgG4anT2wx1jvuUQ'
+      ata.url <- "https://drive.google.com/open?id=1sGRp0zNjlQUg6LXpEgG4anT2wx1jvuUQ"
       ata.tf <- "Can3ArcMinute_CCSM4_RCP45_ATA2011-2100.grd"
-      ata.arc <- 'Canada3ArcMinute_CCSM4_45_ATA2011-2100.zip'
+      ata.arc <- "Canada3ArcMinute_CCSM4_45_ATA2011-2100.zip"
     } else if (P(sim)$GCM == "CanESM2_RCP4.5") {
       ata.url <- "https://drive.google.com/open?id=1d8wy70gxDcO2MKsQt7tYBpryKudE-99h"
       ata.tf <- "Can3ArcMinute_CanESM2_RCP45_ATA2011-2100.grd"
-      ata.arc <- 'Canada3ArcMinute_ATA2011-2100.zip'
+      ata.arc <- "Canada3ArcMinute_ATA2011-2100.zip"
     } else if (P(sim)$GCM == "CCSM4_RCP8.5") {
-      ata.url <- 'https://drive.google.com/open?id=1_LXyPRdWbUj_Kk3ab-bgjqDXcowg_lpM'
-      ata.tf <- 'Can3ArcMinute_CCSM4_RCP85_ATA2011-2100.grd'
-      ata.arc <- 'Canada3ArcMinute_CCSM4_85_ATA2011-2100.zip'
+      ata.url <- "https://drive.google.com/open?id=1_LXyPRdWbUj_Kk3ab-bgjqDXcowg_lpM"
+      ata.tf <- "Can3ArcMinute_CCSM4_RCP85_ATA2011-2100.grd"
+      ata.arc <- "Canada3ArcMinute_CCSM4_85_ATA2011-2100.zip"
     } else {
       stop("unrecognized GCM in P(sim)$GCM")
     }
@@ -805,17 +793,17 @@ sumPeriod <- function(x, rows, m, p, clim){
 
   if (!suppliedElsewhere("CMIstack", sim)) {
     if (P(sim)$GCM == "CCSM4_RCP4.5") {
-      cmi.url <- 'https://drive.google.com/open?id=1ERoQmCuQp3_iffQ0kXN7SCQr07M7dawv'
+      cmi.url <- "https://drive.google.com/open?id=1ERoQmCuQp3_iffQ0kXN7SCQr07M7dawv"
       cmi.tf <- "Canada3ArcMinute_CCSM4_45_CMI2011-2100.grd"
-      cmi.arc <- 'Canada3ArcMinute_CCSM4_45_CMI2011-2100.zip'
+      cmi.arc <- "Canada3ArcMinute_CCSM4_45_CMI2011-2100.zip"
     } else if (P(sim)$GCM == "CanESM2_RCP4.5") {
       cmi.url <- "https://drive.google.com/open?id=1MwhK3eD1W6u0AgFbRgVg7j-qqyk0-3yA"
       cmi.tf <- "Canada3ArcMinute_CMI2011-2100.grd"
       cmi.arc <- "Canada3ArcMinute_CMI2011-2100.zip"
     } else if (P(sim)$GCM == "CCSM4_RCP8.5") {
-      cmi.url <- 'https://drive.google.com/open?id=1OcVsAQXKO4N4ZIESNmIZAI9IZcutctHX'
-      cmi.tf <- 'Canada3ArcMinute_CCSM4_85_CMI2011-2100.grd'
-      cmi.arc <- 'Canada3ArcMinute_CCSM4_85_CMI2011-2100.zip'
+      cmi.url <- "https://drive.google.com/open?id=1OcVsAQXKO4N4ZIESNmIZAI9IZcutctHX"
+      cmi.tf <- "Canada3ArcMinute_CCSM4_85_CMI2011-2100.grd"
+      cmi.arc <- "Canada3ArcMinute_CCSM4_85_CMI2011-2100.zip"
     } else {
       stop("unrecognized GCM in P(sim)$GCM")
     }
@@ -837,9 +825,9 @@ sumPeriod <- function(x, rows, m, p, clim){
   }
 
   if (!suppliedElsewhere("CMInormal", sim)) {
-    sim$CMInormal <- prepInputs(targetFile = 'Canada3ArcMinute_normalCMI.grd',
-                                archive = 'Canada3ArcMinute_normalCMI.zip',
-                                url = 'https://drive.google.com/open?id=16YMgx9t2eW8-fT5YyW0xEbjKODYNCiys',
+    sim$CMInormal <- prepInputs(targetFile = "Canada3ArcMinute_normalCMI.grd",
+                                archive = "Canada3ArcMinute_normalCMI.zip",
+                                url = "https://drive.google.com/open?id=16YMgx9t2eW8-fT5YyW0xEbjKODYNCiys",
                                 destinationPath = dPath,
                                 fun = "raster::raster",
                                 studyArea = sim$studyArea,
@@ -847,7 +835,7 @@ sumPeriod <- function(x, rows, m, p, clim){
                                 useCache = TRUE,
                                 overwrite = TRUE,
                                 userTags = c(currentModule(sim), "CMInormal"),
-                                method = 'bilinear',
+                                method = "bilinear",
                                 alsoExtract = "Canada3ArcMinute_normalCMI.gri")
   }
   return(invisible(sim))
