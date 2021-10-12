@@ -24,7 +24,7 @@ defineModule(sim, list(
                   "PredictiveEcology/pemisc@development (>= 0.0.3.9002)"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
-    defineParameter(".useCache", "logical", FALSE, NA, NA,
+    defineParameter(".useCache", "logical", ".inputObjects", NA, NA,
                     desc = "Should this entire module be run with caching activated?
                     This is generally intended for data-type modules, where stochasticity and time are not relevant"),
     defineParameter("biomassModel", "character", "Lambert2005", NA, NA,
