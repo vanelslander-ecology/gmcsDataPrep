@@ -191,7 +191,8 @@ Init <- function(sim) {
     stop("The PSP objects are being supplied incorrectly. Please review loadOrder argument in simInit")
   }
 
-  sim$PSPmodelData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
+  sim$PSPmodelData <- Cache(prepModelData,
+                            studyAreaPSP = sim$studyAreaPSP,
                             PSPgis = sim$PSPgis_gmcs,
                             PSPmeasure = sim$PSPmeasure_gmcs,
                             PSPplot = sim$PSPplot_gmcs,
