@@ -55,11 +55,11 @@ defineModule(sim, list(
                                  "their interactions, with PlotID as a random effect. Defaults to zero-inflated inverse gaussian",
                                  "glm that requires custom LandR.CS predict function to predict...for now")),
     defineParameter("nullGrowthModel", class = "call",
-                    quote(nlme::lme(growth ~ logAge + logAge^2, random = ~1 | OrigPlotID1,
+                    quote(nlme::lme(growth ~ logAge, random = ~1 | OrigPlotID1,
                                     weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)), NA, NA,
                     desc = "a null model used only for comparative purposes"),
     defineParameter("nullMortalityModel", class = "call",
-                    quote(nlme::lme(mortality ~ logAge + logAge^2, random = ~1 | OrigPlotID1,
+                    quote(nlme::lme(mortality ~ logAge, random = ~1 | OrigPlotID1,
                                     weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)), NA, NA,
                     desc = "a null model used only for comparative purposes"),
     defineParameter("PSPab_damageColsToExclude", "numeric",3, NA, NA,
@@ -393,7 +393,8 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   #26/02/2019 after discussion we decided not to include species in model.
   # Decided to parameterize inclusion of ATA or year. ATA is better for projecting, but year is canonical
   # Sum species-specific mortality, growth, and net biomass by plot and year
-  PSPmodelData <- PSPmodelData[, .("growth" = sum(growth_gm2), "mortality" = sum(mortality_gm2),
+  # growth is set to 0.1 if it would be 0 (to avoid model error-  0 growth is caused by measurement error)
+  PSPmodelData <- PSPmodelData[, .("growth" = pmax(1, sum(growth_gm2)), "mortality" = sum(mortality_gm2),
                                    "netBiomass" = sum(netBiomass_gm2), "biomass" = sum(biomass),
                                    'CMI' = mean(CMI), 'CMIA' = mean(CMIA),
                                    'AT' = mean(AT), "ATA" = mean(ATA), 'standAge' = mean(standAge),
@@ -549,17 +550,21 @@ pspIntervals <- function(i, M, P, Clim) {
   dead <- m1[!m1$TreeNumber %in% m2$TreeNumber]
   newborn <- m2[!m2$TreeNumber %in% m1$TreeNumber]
 
-  if (nrow(living1) != nrow(living2)) {
-    stop('there is a problem with the PSP dataset. Contact ian.eddy@canada.ca')
+  if (nrow(living1) != nrow(living2) | nrow(living1) == 0) {
+    stop("there is a problem in the PSP data with the plots: ", unique(m1$MeasureID), " ", unique(m2$MeasureID))
+    #nrow(living1) == 0 will happen if tree numbers change between measurements
   }
   #Find observed annual changes in mortality and growth
   living2$origBiomass <- living1$biomass
+  #growth cannot be negative, by definition
+  living2[biomass < origBiomass, biomass := origBiomass]
+
   living <- living2[, .(newGrowth =  sum(biomass - origBiomass)/censusLength,
                         biomass = sum(biomass)),,
                     c("Species", "newSpeciesName")] %>%
     setkey(., Species, newSpeciesName)
-  #growth cannot be negative by definition. So if a reduction in DBH occured, this will count as 0
-  living[newGrowth < 0, newGrowth := 0]
+
+
 
   newborn <- newborn[, .(newGrowth = sum(biomass) / (censusLength / 2),
                          biomass = sum(biomass) / (censusLength / 2)),
