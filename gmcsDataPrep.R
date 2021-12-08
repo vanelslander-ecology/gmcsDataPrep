@@ -269,8 +269,9 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
 
   #Crop points to studyAreaPSP
   if (!is.null(studyAreaPSP)) {
-    tempSA <- spTransform(x = studyAreaPSP, CRSobj = crs(PSPgis)) %>%
-      st_as_sf(.)
+    tempSA <- st_as_sf(studyAreaPSP) %>%
+      st_transform(tempSA, crs = crs(PSPgis))
+
     message(yellow("Filtering PSPs to study Area..."))
     PSP_sa <- PSPgis[tempSA,] %>% #Find how to cache this. '[' did not work
       setkey(., OrigPlotID1)
