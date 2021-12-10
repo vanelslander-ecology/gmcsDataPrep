@@ -16,7 +16,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list("crayon", "data.table", "gamlss", "glmm", "MASS", "nlme", "sf", "sp", "raster",
+  reqdPkgs = list("crayon", "data.table", "gamlss", "ggplot2", "glmm", "MASS", "nlme", "sf", "sp", "raster",
                   "ianmseddy/LandR.CS@development",
                   "ianmseddy/PSPclean",
                   "PredictiveEcology/LandR@development",
@@ -32,6 +32,7 @@ defineModule(sim, list(
     defineParameter("cacheClimateRas", "logical", TRUE, NA, NA,
                     desc = paste("should reprojection of climate rasters be cached every year?",
                                  "This will result in potentially > 100 rasters being cached")),
+    defineParameter("doPlotting", "logical", FALSE, NA, NA, desc = "if true, will plot and save models"),
     defineParameter("GCM", "character", "CCSM4_RCP4.5", NA, NA,
                     desc = paste("if using default climate data, the global climate model and rcp scenario to use.",
                                  "Defaults to CanESM2_RCP4.5. but other available options include CanESM2_RCP4.5 and CCSM4_RCP8.5.",
@@ -191,7 +192,8 @@ Init <- function(sim) {
     stop("The PSP objects are being supplied incorrectly. Please review loadOrder argument in simInit")
   }
 
-  sim$PSPmodelData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
+  sim$PSPmodelData <- Cache(prepModelData,
+                            studyAreaPSP = sim$studyAreaPSP,
                             PSPgis = sim$PSPgis_gmcs,
                             PSPmeasure = sim$PSPmeasure_gmcs,
                             PSPplot = sim$PSPplot_gmcs,
@@ -207,7 +209,8 @@ Init <- function(sim) {
   message("Preparing validation dataset")
   if (!is.null(sim$PSPvalidationPeriod)) {
     #build validation data from observations in PSPvalidationPeriod that also aren't in model data
-    sim$PSPvalidationData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
+    sim$PSPvalidationData <- Cache(prepModelData,
+                                   studyAreaPSP = sim$studyAreaPSP,
                                    PSPgis = sim$PSPgis_gmcs,
                                    PSPmeasure = sim$PSPmeasure_gmcs,
                                    PSPplot = sim$PSPplot_gmcs,
@@ -256,7 +259,9 @@ Init <- function(sim) {
                 nullMortality = sim$nullMortalityModel,
                 gcs = sim$gcsModel,
                 mcs = sim$mcsModel,
-                validationData = sim$PSPvalidationData) ## TODO: output this to disk and get R^2 from NLL
+                validationData = sim$PSPvalidationData,
+                doPlotting = P(sim)$doPlotting,
+                path = outputPath(sim)) ## TODO: output this to disk and get R^2 from NLL
 
   return(invisible(sim))
 }
@@ -273,8 +278,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
       st_transform(tempSA, crs = crs(PSPgis))
 
     message(yellow("Filtering PSPs to study Area..."))
-    PSP_sa <- PSPgis[tempSA,] %>% #Find how to cache this. '[' did not work
-      setkey(., OrigPlotID1)
+    PSP_sa <- PSPgis[tempSA,]
     message(yellow(paste0("There are "), nrow(PSP_sa), " PSPs in your study area"))
   } else {
     PSP_sa <- PSPgis

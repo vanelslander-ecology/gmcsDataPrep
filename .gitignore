@@ -6,7 +6,7 @@
 *.Rproj*
 .httr-oauth
 cache/
-
+outputs/
 data/
 
 climateNA_Inputs\.zip
