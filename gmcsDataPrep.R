@@ -45,7 +45,7 @@ defineModule(sim, list(
                     desc = "The minimum DBH allowed. Each province uses different criteria for monitoring trees,
                     so absence of entries < min(DBH) does not equate to absence of trees."),
     defineParameter("mortalityModel", class = "call",
-                    quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI + logAge^2*(ATA + CMI),
+                    quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI,
                                  LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
                                  sigma.formula = ~logAge + ATA,  nu.formula = ~logAge, family = ZAIG, data = PSPmodelData)), NA, NA,
                     desc = paste("Quoted model used to predict mortality in PSP data as a function of logAge, CMI, ATA, and",
