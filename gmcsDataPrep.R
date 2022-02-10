@@ -1,7 +1,3 @@
-# Everything in this file gets sourced during simInit, and all functions and objects
-# are put into the simList. To use objects, use sim$xxx, and are thus globally available
-# to all modules. Functions can be used without sim$ as they are namespaced, like functions
-# in R packages. If exact location is required, functions will be: sim$<moduleName>$FunctionName
 defineModule(sim, list(
   name = "gmcsDataPrep",
   description = NA, #"insert module description here",
@@ -41,7 +37,7 @@ defineModule(sim, list(
     defineParameter("growthModel", class = "call",
                     quote(glmmPQL(growth ~ logAge*(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
                                   weights = scale(PSPmodelData$plotSize^0.5 * PSPmodelData$periodLength, center = FALSE),
-                                  data = PSPmodelData, family = "Gamma"(link = 'log'))),
+                                  data = PSPmodelData, family = "Gamma"(link = "log"))),
                     NA, NA,
                     desc = paste("Quoted model used to predict growth in PSP data as a function of",
                                  "logAge, CMI, ATA, and their interactions, with PlotID as a random effect")),
@@ -103,15 +99,15 @@ defineModule(sim, list(
     expectsInput(objectName = "CMInormal", objectClass = "RasterLayer",
                  desc = "Climate Moisture Index Normals from 1950-2010"),
     expectsInput(objectName = "PSPmeasure_gmcs", objectClass = "data.table", desc = "standardized tree measurements for PSPs",
-                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/view?usp=sharing"),
+                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/"),
     expectsInput(objectName = "PSPplot_gmcs", objectClass = "data.table", desc = "standardized plot-level attributes for PSPs",
-                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/view?usp=sharing"),
+                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/"),
     expectsInput(objectName = "PSPgis_gmcs", objectClass = "data.table", desc = "PSP plot data as sf object",
-                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/view?usp=sharing"),
+                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/"),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table",
                  desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA with csv",
                               "Temp is represented as degrees, not tenth of degrees as with the raster data"),
-                 sourceURL = "https://drive.google.com/file/d/1jCp0K9wW6AQflVu8AojU_zSNYxt3m6Yk/view?usp=sharing"),
+                 sourceURL = "https://drive.google.com/file/d/1jCp0K9wW6AQflVu8AojU_zSNYxt3m6Yk/"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
                  desc = "template raster for ATA and CMI"),
     expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame",
@@ -266,9 +262,8 @@ Init <- function(sim) {
   return(invisible(sim))
 }
 
-prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
-                          PSPclimData, useHeight, biomassModel,
-                          PSPperiod, minDBH) {
+prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData, useHeight,
+                          biomassModel, PSPperiod, minDBH) {
   #first remove trees with 9999 as TreeNumber
   PSPmeasure <- PSPmeasure[TreeNumber != '9999']
 
@@ -307,7 +302,6 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   #Join data (should be small enough by now)
   PSPmeasure <- PSPmeasure[PSPplot, on = c('MeasureID', 'OrigPlotID1', 'MeasureYear')]
   PSPmeasure[, c('Longitude', 'Latitude', 'Easting', 'Northing', 'Zone') := NULL]
-
 
   #Restrict to trees > minDBH
   PSPmeasure <- PSPmeasure[DBH >= minDBH,]
@@ -431,7 +425,6 @@ gmcsModelBuild <- function(PSPmodelData, model, type) {
 
 #This function exists to cache the converged model - it also needs review
 foo <- function(mod, dat) {
-
   gmcsModel <- Cache(eval, mod, envir = environment(), userTags = c("gmcsDataPrep", "mortModel"))
   defaultModel <- quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
                                  LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
@@ -533,7 +526,6 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
     }
   }
 
-
   return(yearRas)
 }
 
@@ -568,8 +560,6 @@ pspIntervals <- function(i, M, P, Clim) {
                         biomass = sum(biomass)),,
                     c("Species", "newSpeciesName")] %>%
     setkey(., Species, newSpeciesName)
-
-
 
   newborn <- newborn[, .(newGrowth = sum(biomass) / (censusLength / 2),
                          biomass = sum(biomass) / (censusLength / 2)),
