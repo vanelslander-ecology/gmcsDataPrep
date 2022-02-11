@@ -506,8 +506,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
     } else {
       message(red(paste0("no climate effect for year ", time)))
       #assume it is not yet 2011, pass raster with all 0s
-      yearRas <- rasterToMatch #Make a NULL raster for no climate effect
-      yearRas[!is.na(rasterToMatch)] <- 0
+      yearRas <- rtm # Make a NULL raster for no climate effect
+      yearRas[!is.na(rtm)] <- 0
     }
   }
 
@@ -520,7 +520,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
 
   if (isATA == TRUE) {
     #ATA was stored as an integer AND as tenth of a degree. So divide by 10 to get actual degrees
-    yearRas[] <- yearRas[]/10
+    yearRas[] <- yearRas[] / 10
     if (max(yearRas[], na.rm = TRUE) > 100) {
       stop("ATA values do not appear to have converted to degrees. Please read over expected inputs")
     }
