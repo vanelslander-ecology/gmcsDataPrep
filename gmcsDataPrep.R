@@ -548,7 +548,7 @@ pspIntervals <- function(i, M, P, Clim) {
   newborn <- m2[!m2$TreeNumber %in% m1$TreeNumber]
 
   if (nrow(living1) != nrow(living2) | nrow(living1) == 0) {
-    stop("there is a problem in the PSP data with the plots: ", unique(m1$MeasureID), " ", unique(m2$MeasureID))
+    warning("there is a problem in the PSP data with the plots: ", unique(m1$MeasureID), " ", unique(m2$MeasureID))
     #nrow(living1) == 0 will happen if tree numbers change between measurements
   }
   #Find observed annual changes in mortality and growth
