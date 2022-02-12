@@ -1,7 +1,3 @@
-# Everything in this file gets sourced during simInit, and all functions and objects
-# are put into the simList. To use objects, use sim$xxx, and are thus globally available
-# to all modules. Functions can be used without sim$ as they are namespaced, like functions
-# in R packages. If exact location is required, functions will be: sim$<moduleName>$FunctionName
 defineModule(sim, list(
   name = "gmcsDataPrep",
   description = NA, #"insert module description here",
@@ -16,7 +12,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list("crayon", "data.table", "gamlss", "glmm", "MASS", "nlme", "sf", "sp", "raster",
+  reqdPkgs = list("crayon", "data.table", "gamlss", "ggplot2", "glmm", "MASS", "nlme", "sf", "sp", "raster",
                   "ianmseddy/LandR.CS@development",
                   "ianmseddy/PSPclean",
                   "PredictiveEcology/LandR@development",
@@ -32,6 +28,7 @@ defineModule(sim, list(
     defineParameter("cacheClimateRas", "logical", TRUE, NA, NA,
                     desc = paste("should reprojection of climate rasters be cached every year?",
                                  "This will result in potentially > 100 rasters being cached")),
+    defineParameter("doPlotting", "logical", FALSE, NA, NA, desc = "if true, will plot and save models"),
     defineParameter("GCM", "character", "CCSM4_RCP4.5", NA, NA,
                     desc = paste("if using default climate data, the global climate model and rcp scenario to use.",
                                  "Defaults to CanESM2_RCP4.5. but other available options include CanESM2_RCP4.5 and CCSM4_RCP8.5.",
@@ -40,7 +37,7 @@ defineModule(sim, list(
     defineParameter("growthModel", class = "call",
                     quote(glmmPQL(growth ~ logAge*(ATA + CMI) + ATA*CMI, random = ~1 | OrigPlotID1,
                                   weights = scale(PSPmodelData$plotSize^0.5 * PSPmodelData$periodLength, center = FALSE),
-                                  data = PSPmodelData, family = "Gamma"(link = 'log'))),
+                                  data = PSPmodelData, family = "Gamma"(link = "log"))),
                     NA, NA,
                     desc = paste("Quoted model used to predict growth in PSP data as a function of",
                                  "logAge, CMI, ATA, and their interactions, with PlotID as a random effect")),
@@ -48,18 +45,18 @@ defineModule(sim, list(
                     desc = "The minimum DBH allowed. Each province uses different criteria for monitoring trees,
                     so absence of entries < min(DBH) does not equate to absence of trees."),
     defineParameter("mortalityModel", class = "call",
-                    quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI + logAge^2*(ATA + CMI),
+                    quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI,
                                  LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
                                  sigma.formula = ~logAge + ATA,  nu.formula = ~logAge, family = ZAIG, data = PSPmodelData)), NA, NA,
                     desc = paste("Quoted model used to predict mortality in PSP data as a function of logAge, CMI, ATA, and",
                                  "their interactions, with PlotID as a random effect. Defaults to zero-inflated inverse gaussian",
                                  "glm that requires custom LandR.CS predict function to predict...for now")),
     defineParameter("nullGrowthModel", class = "call",
-                    quote(nlme::lme(growth ~ logAge + logAge^2, random = ~1 | OrigPlotID1,
+                    quote(nlme::lme(growth ~ logAge, random = ~1 | OrigPlotID1,
                                     weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)), NA, NA,
                     desc = "a null model used only for comparative purposes"),
     defineParameter("nullMortalityModel", class = "call",
-                    quote(nlme::lme(mortality ~ logAge + logAge^2, random = ~1 | OrigPlotID1,
+                    quote(nlme::lme(mortality ~ logAge, random = ~1 | OrigPlotID1,
                                     weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)), NA, NA,
                     desc = "a null model used only for comparative purposes"),
     defineParameter("PSPab_damageColsToExclude", "numeric",3, NA, NA,
@@ -102,15 +99,15 @@ defineModule(sim, list(
     expectsInput(objectName = "CMInormal", objectClass = "RasterLayer",
                  desc = "Climate Moisture Index Normals from 1950-2010"),
     expectsInput(objectName = "PSPmeasure_gmcs", objectClass = "data.table", desc = "standardized tree measurements for PSPs",
-                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/view?usp=sharing"),
+                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/"),
     expectsInput(objectName = "PSPplot_gmcs", objectClass = "data.table", desc = "standardized plot-level attributes for PSPs",
-                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/view?usp=sharing"),
+                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/"),
     expectsInput(objectName = "PSPgis_gmcs", objectClass = "data.table", desc = "PSP plot data as sf object",
-                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/view?usp=sharing"),
+                 sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/"),
     expectsInput(objectName = "PSPclimData", objectClass = "data.table",
                  desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA with csv",
                               "Temp is represented as degrees, not tenth of degrees as with the raster data"),
-                 sourceURL = "https://drive.google.com/file/d/1jCp0K9wW6AQflVu8AojU_zSNYxt3m6Yk/view?usp=sharing"),
+                 sourceURL = "https://drive.google.com/file/d/1jCp0K9wW6AQflVu8AojU_zSNYxt3m6Yk/"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
                  desc = "template raster for ATA and CMI"),
     expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame",
@@ -208,7 +205,8 @@ Init <- function(sim) {
   message("Preparing validation dataset")
   if (!is.null(sim$PSPvalidationPeriod)) {
     #build validation data from observations in PSPvalidationPeriod that also aren't in model data
-    sim$PSPvalidationData <- Cache(prepModelData, studyAreaPSP = sim$studyAreaPSP,
+    sim$PSPvalidationData <- Cache(prepModelData,
+                                   studyAreaPSP = sim$studyAreaPSP,
                                    PSPgis = sim$PSPgis_gmcs,
                                    PSPmeasure = sim$PSPmeasure_gmcs,
                                    PSPplot = sim$PSPplot_gmcs,
@@ -225,7 +223,6 @@ Init <- function(sim) {
     #this removes all observations for which there is no random effect in the fitting data
     sim$PSPvalidationData <- sim$PSPvalidationData[OrigPlotID1 %in% sim$PSPmodelData$OrigPlotID1, ]
   } else {
-
     # sample validation data from PSPmodelData
     outData <- Cache(prepValidationData,
                      PSPmodelData = sim$PSPmodelData,
@@ -257,24 +254,25 @@ Init <- function(sim) {
                 nullMortality = sim$nullMortalityModel,
                 gcs = sim$gcsModel,
                 mcs = sim$mcsModel,
-                validationData = sim$PSPvalidationData) ## TODO: output this to disk and get R^2 from NLL
+                validationData = sim$PSPvalidationData,
+                doPlotting = P(sim)$doPlotting,
+                path = outputPath(sim)) ## TODO: output this to disk and get R^2 from NLL
 
   return(invisible(sim))
 }
 
-prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
-                          PSPclimData, useHeight, biomassModel,
-                          PSPperiod, minDBH) {
+prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData, useHeight,
+                          biomassModel, PSPperiod, minDBH) {
   #first remove trees with 9999 as TreeNumber
   PSPmeasure <- PSPmeasure[TreeNumber != '9999']
 
   #Crop points to studyAreaPSP
   if (!is.null(studyAreaPSP)) {
-    tempSA <- spTransform(x = studyAreaPSP, CRSobj = crs(PSPgis)) %>%
-      st_as_sf(.)
+    tempSA <- st_as_sf(studyAreaPSP) %>%
+      st_transform(tempSA, crs = crs(PSPgis))
+
     message(yellow("Filtering PSPs to study Area..."))
-    PSP_sa <- PSPgis[tempSA,] %>% #Find how to cache this. '[' did not work
-      setkey(., OrigPlotID1)
+    PSP_sa <- PSPgis[tempSA,]
     message(yellow(paste0("There are "), nrow(PSP_sa), " PSPs in your study area"))
   } else {
     PSP_sa <- PSPgis
@@ -303,7 +301,6 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   #Join data (should be small enough by now)
   PSPmeasure <- PSPmeasure[PSPplot, on = c('MeasureID', 'OrigPlotID1', 'MeasureYear')]
   PSPmeasure[, c('Longitude', 'Latitude', 'Easting', 'Northing', 'Zone') := NULL]
-
 
   #Restrict to trees > minDBH
   PSPmeasure <- PSPmeasure[DBH >= minDBH,]
@@ -394,7 +391,8 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot,
   #26/02/2019 after discussion we decided not to include species in model.
   # Decided to parameterize inclusion of ATA or year. ATA is better for projecting, but year is canonical
   # Sum species-specific mortality, growth, and net biomass by plot and year
-  PSPmodelData <- PSPmodelData[, .("growth" = sum(growth_gm2), "mortality" = sum(mortality_gm2),
+  # growth is set to 0.1 if it would be 0 (to avoid model error-  0 growth is caused by measurement error)
+  PSPmodelData <- PSPmodelData[, .("growth" = pmax(1, sum(growth_gm2)), "mortality" = sum(mortality_gm2),
                                    "netBiomass" = sum(netBiomass_gm2), "biomass" = sum(biomass),
                                    'CMI' = mean(CMI), 'CMIA' = mean(CMIA),
                                    'AT' = mean(AT), "ATA" = mean(ATA), 'standAge' = mean(standAge),
@@ -426,7 +424,6 @@ gmcsModelBuild <- function(PSPmodelData, model, type) {
 
 #This function exists to cache the converged model - it also needs review
 foo <- function(mod, dat) {
-
   gmcsModel <- Cache(eval, mod, envir = environment(), userTags = c("gmcsDataPrep", "mortModel"))
   defaultModel <- quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
                                  LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
@@ -508,8 +505,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
     } else {
       message(red(paste0("no climate effect for year ", time)))
       #assume it is not yet 2011, pass raster with all 0s
-      yearRas <- rasterToMatch #Make a NULL raster for no climate effect
-      yearRas[!is.na(rasterToMatch)] <- 0
+      yearRas <- rtm # Make a NULL raster for no climate effect
+      yearRas[!is.na(rtm)] <- 0
     }
   }
 
@@ -522,12 +519,11 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
 
   if (isATA == TRUE) {
     #ATA was stored as an integer AND as tenth of a degree. So divide by 10 to get actual degrees
-    yearRas[] <- yearRas[]/10
+    yearRas[] <- yearRas[] / 10
     if (max(yearRas[], na.rm = TRUE) > 100) {
       stop("ATA values do not appear to have converted to degrees. Please read over expected inputs")
     }
   }
-
 
   return(yearRas)
 }
@@ -550,17 +546,19 @@ pspIntervals <- function(i, M, P, Clim) {
   dead <- m1[!m1$TreeNumber %in% m2$TreeNumber]
   newborn <- m2[!m2$TreeNumber %in% m1$TreeNumber]
 
-  if (nrow(living1) != nrow(living2)) {
-    stop('there is a problem with the PSP dataset. Contact ian.eddy@canada.ca')
+  if (nrow(living1) != nrow(living2) | nrow(living1) == 0) {
+    warning("there is a problem in the PSP data with the plots: ", unique(m1$MeasureID), " ", unique(m2$MeasureID))
+    #nrow(living1) == 0 will happen if tree numbers change between measurements
   }
   #Find observed annual changes in mortality and growth
   living2$origBiomass <- living1$biomass
+  #growth cannot be negative, by definition
+  living2[biomass < origBiomass, biomass := origBiomass]
+
   living <- living2[, .(newGrowth =  sum(biomass - origBiomass)/censusLength,
                         biomass = sum(biomass)),,
                     c("Species", "newSpeciesName")] %>%
     setkey(., Species, newSpeciesName)
-  #growth cannot be negative by definition. So if a reduction in DBH occured, this will count as 0
-  living[newGrowth < 0, newGrowth := 0]
 
   newborn <- newborn[, .(newGrowth = sum(biomass) / (censusLength / 2),
                          biomass = sum(biomass) / (censusLength / 2)),
