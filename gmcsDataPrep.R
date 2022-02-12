@@ -223,7 +223,6 @@ Init <- function(sim) {
     #this removes all observations for which there is no random effect in the fitting data
     sim$PSPvalidationData <- sim$PSPvalidationData[OrigPlotID1 %in% sim$PSPmodelData$OrigPlotID1, ]
   } else {
-
     # sample validation data from PSPmodelData
     outData <- Cache(prepValidationData,
                      PSPmodelData = sim$PSPmodelData,
