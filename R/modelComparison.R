@@ -27,8 +27,7 @@ assessNLL <- function(validationData, observedCol, gmModel, plotCol, doPlotting,
   validationData <- copy(validationData)
   validationData[, predictionVar := predict(gmModel, newdata = validationData, type = "response")]
   validationData[, observed := validationData[, .SD, .SDcol = observedCol]]
-  if (doPlotting){
-
+  if (doPlotting) {
     a <- ggplot(data = validationData, aes(y = predictionVar, x = observed, col = standAge)) +
       geom_point() +
       labs(x = "observed", y = "predicted", title = paste(plotCol, observedCol, sep = " ")) +
