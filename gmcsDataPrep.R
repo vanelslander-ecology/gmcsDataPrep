@@ -6,7 +6,7 @@ defineModule(sim, list(
     person(c("Ian", "MS"), "Eddy", email = "ian.eddy@nrcan-rncan.gc.ca", role = c("aut", "cre"))
   ),
   childModules = character(0),
-  version = list(SpaDES.core = "0.2.4", gmcsDataPrep = "0.0.2"),
+  version = list(gmcsDataPrep = "0.0.2"),
   spatialExtent = raster::extent(rep(NA_real_, 4)),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
@@ -14,7 +14,7 @@ defineModule(sim, list(
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
   reqdPkgs = list("crayon", "data.table", "gamlss", "ggplot2", "glmm", "MASS", "nlme", "sf", "sp", "raster",
                   "ianmseddy/LandR.CS@development",
-                  "ianmseddy/PSPclean",
+                  "ianmseddy/PSPclean@development (>= 0.1.2.9000)",
                   "PredictiveEcology/LandR@development",
                   "PredictiveEcology/pemisc@development (>= 0.0.3.9002)"),
   parameters = rbind(
