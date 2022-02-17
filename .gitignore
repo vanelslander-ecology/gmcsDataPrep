@@ -4,10 +4,14 @@
 .RData
 .Ruserdata
 *.Rproj*
+
 .httr-oauth
+
+*.html
+
 cache/
-outputs/
 data/
+outputs/
 
 climateNA_Inputs\.zip
 global_PSP.R

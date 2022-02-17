@@ -1,22 +1,29 @@
 ---
 title: "gmcsDataPrep"
-author: ""
+author: "Ian MS Eddy"
 date: "21 January 2019"
-output: pdf_document
+output:
+  html_document:
+    df_print: paged
+    keep_md: yes
+editor_options:
+  chunk_output_type: console
 ---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE, warning = FALSE, results = "hold")
+```
 
 # Overview
 
-This module uses climate data and permanent sampling plot data to prepare a multivariate mixed effect model of growth, mortality, and net biomass change. The PSP data is supplied by the module PSP_clean. The PSP_clean data includes BC, Alberta, Saskatchewan, and the first NFI PSP measurement, which is mainly western Canada. However, because the module requires repeat measurements, this module should only be used with a studyAreaLarge that covers at a minimum part of BC, Alberta, or Saskatchewan. 
+This module uses climate data and permanent sampling plot data to prepare a multivariate mixed effect model of growth, mortality, and net biomass change.
+The data includes BC, Alberta, Saskatchewan, and the first NFI PSP measurement, which is mainly western Canada.
+However, because the module requires repeat measurements, this module should only be used with a studyAreaLarge that covers at a minimum part of BC, Alberta, or Saskatchewan. 
 
-The module does not estimate unobserved growth and mortality (trees that grew and died between census measurements). The formulas are included as comments. It is not advisable to estimate the unobserved mortality and growth of species, and although the multivariate model does not have a species term, we intended for the model to one day include species. Consequently, we exclude unobserved mortality and growth (estimates are usually 0.5-1.5% of total growth and mortality, so no biggie). 
-
-
-## R Markdown
-
-R Markdown syntax allows R code, outputs, and figures to be rendered in the documentation.
-
-For help writing in R Markdown, see http://rmarkdown.rstudio.com/.
+The module does not estimate unobserved growth and mortality (trees that grew and died between census measurements).
+The formulas are included as comments.
+It is not advisable to estimate the unobserved mortality and growth of species, and although the multivariate model does not have a species term, we intended for the model to one day include species.
+Consequently, we exclude unobserved mortality and growth (estimates are usually 0.5-1.5% of total growth and mortality, so no biggie). 
 
 # Usage
 
@@ -33,11 +40,11 @@ getPaths() # shows where the 4 relevant paths are
 times <- list(start = 2011, end = 2012)
 
 #the study area isn't necessary to test models - it is only used to satisfy climate data prep. Smaller is better
-studyArea <- randomStudyArea(size=  10000*6.25*400)
+studyArea <- randomStudyArea(size = 10000*6.25*400)
 templateRaster <- raster(extent(studyArea), crs = crs(studyArea), res = c(500,500))
 templateRaster <- setValues(templateRaster, 1)
 
-#this is the continugous ecoregions of the RIA. It is suggested that users pass a studyAreaPSP 
+#this is the contiguous ecoregions of the RIA. It is suggested that users pass a studyAreaPSP 
 #it should represent a geographic area where trees would be expected to have a similar climate response
 studyAreaPSP <- prepInputs(url = 'https://drive.google.com/open?id=10yhleaumhwa3hAv_8o7TE15lyesgkDV_',
                                  destinationPath = tempdir())
@@ -85,20 +92,26 @@ mySimOut <- spades(mySim)
 
 ```
 
+# Parameters
 
+Provide a summary of user-visible parameters.
 
+```{r moduleParams, eval = TRUE, echo = FALSE, message=FALSE, warning=FALSE}
+df_params <- SpaDES.core::moduleParams("gmcsDataPrep", "..")
+knitr::kable(df_params)
+```
 
 # Events
 
-Describe what happens for each event type.
+- TODO
 
 ## Plotting
 
-Write what is plotted.
+- TODO
 
 ## Saving
 
-Write what is saved.
+- TODO
 
 # Data dependencies
 
@@ -107,11 +120,25 @@ Write what is saved.
 How to obtain input data, and a description of the data required by the module.
 If `sourceURL` is specified, `downloadData("gmcsDataPrep", "path/to/modules/dir")` may be sufficient.
 
+## Input data
+
+How to obtain input data, and a description of the data required by the module.
+If `sourceURL` is specified, `downloadData("canClimateData", "..")` may be sufficient.
+
+```{r moduleInputs, eval = TRUE, echo = FALSE, message=FALSE, warning=FALSE}
+df_inputs <- SpaDES.core::moduleInputs("canClimateData", "..")
+knitr::kable(df_inputs)
+```
+
 ## Output data
 
 Description of the module outputs.
 
+```{r moduleOutputs, eval = TRUE, echo = FALSE, message=FALSE, warning=FALSE}
+df_outputs <- SpaDES.core::moduleOutputs("canClimateData", "..")
+knitr::kable(df_outputs)
+```
+
 # Links to other modules
 
-Describe any anticipated linkages to other modules.
-
+- [Biomass_core](https://github.com/PredictiveEcology/Biomass_core)
