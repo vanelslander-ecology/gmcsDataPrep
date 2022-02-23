@@ -478,20 +478,6 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
     }
 
     #need to suppress warnings about resampling method - it SHOULD be bilinear
-
-    if (all(is.na(getValues(yearRas)))) {
-      #this shouldn't occur unless due to bugs in ClimateNA
-      message(crayon::yellow(paste0(names(yearRas),
-                                    " for this specific study area is all NA. Using previous years' raster ("
-                                    , names(stack[[currentRas - 1]]), ")")))
-      currentRas <- currentRas - 1
-      yearRas <- postProcess(stack[[currentRas]],
-                             rasterToMatch = rtm,
-                             studyArea = studyArea,
-                             filename2 = NULL,
-                             method = "bilinear",
-                             useCache =  cacheClimateRas)
-    }
   } else {
     if (time > 2100) {
       message(crayon::yellow(paste0("The current time (", time,") is > 2100 and there are no predictions for this year.
@@ -513,8 +499,8 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
 
   #this is a safety catch in case there are NAs due to the resampling ---
   #there may be due to the disparity in spatial resolution - 16/01/2020 Still haven't solved this from 4.5 km to 250 m
-  medianVals <- median(getValues(yearRas), na.rm = TRUE)
-  if (!is.null(yearRas[is.na(yearRas) & !is.na(rtm)])) {
+   if (!is.null(yearRas[is.na(yearRas) & !is.na(rtm)])) {
+     medianVals <- median(getValues(yearRas), na.rm = TRUE)
     yearRas[is.na(yearRas) & !is.na(rtm)] <- medianVals
   }
 
