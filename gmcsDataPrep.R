@@ -497,14 +497,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
     }
   }
 
-  #this is a safety catch in case there are NAs due to the resampling ---
-  #there may be due to the disparity in spatial resolution - 16/01/2020 Still haven't solved this from 4.5 km to 250 m
-   if (!is.null(yearRas[is.na(yearRas) & !is.na(rtm)])) {
-     medianVals <- median(getValues(yearRas), na.rm = TRUE)
-    yearRas[is.na(yearRas) & !is.na(rtm)] <- medianVals
-  }
-
-  if (isATA == TRUE) {
+   if (isATA == TRUE) {
     #ATA was stored as an integer AND as tenth of a degree. So divide by 10 to get actual degrees
     yearRas[] <- yearRas[] / 10
     if (max(yearRas[], na.rm = TRUE) > 100) {
