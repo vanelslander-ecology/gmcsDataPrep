@@ -446,7 +446,8 @@ foo <- function(mod, dat) {
   return(gmcsModel)
 }
 
-resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClimateRas, firstYear) {
+resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm,
+                           cacheClimateRas, firstYear, doAssertion = P(sim)$doAssertion) {
   # Restructured to test time for number of characters (entering time as XX or YYYY)
   if (nchar(time) <= 3) {
     time <- time + 2001 #2001 is purely arbirtary for Tati's sake due to kNN - boo relative years
@@ -499,7 +500,7 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
     }
   }
 
-  if (P(sim)$doAssertion){
+  if (doAssertion){
     #this is a safety catch in case there are NAs due to the resampling ---
     #there may be due to the disparity in spatial resolution - 16/01/2020 Still haven't solved this from 4.5 km to 250 m
     if (!is.null(yearRas[is.na(yearRas) & !is.na(rtm)])) {
