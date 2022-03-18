@@ -29,6 +29,8 @@ defineModule(sim, list(
     defineParameter("cacheClimateRas", "logical", TRUE, NA, NA,
                     desc = paste("should reprojection of climate rasters be cached every year?",
                                  "This will result in potentially > 100 rasters being cached")),
+    defineParameter("doAssertion", "logical", getOption("LandR.assertions"), NA, NA,
+                    desc = "assertions used to check climate data for NA values in valid pixels"),
     defineParameter("doPlotting", "logical", FALSE, NA, NA, desc = "if true, will plot and save models"),
     defineParameter("GCM", "character", "CCSM4_RCP4.5", NA, NA,
                     desc = paste("if using default climate data, the global climate model and rcp scenario to use.",
@@ -497,7 +499,15 @@ resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm, cacheClim
     }
   }
 
-   if (isATA == TRUE) {
+  if (P(sim)$doAssertion){
+    #this is a safety catch in case there are NAs due to the resampling ---
+    #there may be due to the disparity in spatial resolution - 16/01/2020 Still haven't solved this from 4.5 km to 250 m
+    if (!is.null(yearRas[is.na(yearRas) & !is.na(rtm)])) {
+      medianVals <- median(getValues(yearRas), na.rm = TRUE)
+      yearRas[is.na(yearRas) & !is.na(rtm)] <- medianVals
+    }
+  }
+  if (isATA == TRUE) {
     #ATA was stored as an integer AND as tenth of a degree. So divide by 10 to get actual degrees
     yearRas[] <- yearRas[] / 10
     if (max(yearRas[], na.rm = TRUE) > 100) {
