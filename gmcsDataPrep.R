@@ -153,7 +153,8 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
       sim$ATA <- resampleStacks(stack = sim$ATAstack, time = time(sim), isATA = TRUE,
                                 studyArea = sim$studyArea, rtm = sim$rasterToMatch,
                                 cacheClimateRas = P(sim)$cacheClimateRas,
-                                firstYear = P(sim)$yearOfFirstClimateImpact)
+                                firstYear = P(sim)$yearOfFirstClimateImpact,
+                                doAssertion = P(sim)$doAssertion)
       if (is.null(sim$ATA) & time(sim) < P(sim)$yearOfFirstClimateImpact) {
         sim$ATA <- sim$rasterToMatch #replace with a raster with no climate anomaly
         sim$ATA[!is.na(sim$ATA)] <- 0
@@ -162,7 +163,8 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
       sim$CMI <- resampleStacks(stack = sim$CMIstack, time = time(sim),
                                 studyArea = sim$studyArea, rtm = sim$rasterToMatch,
                                 cacheClimateRas = P(sim)$cacheClimateRas,
-                                firstYear = P(sim)$yearOfFirstClimateImpact)
+                                firstYear = P(sim)$yearOfFirstClimateImpact,
+                                doAssertion = P(sim)$doAssertion)
       if (is.null(sim$CMI) & time(sim) < P(sim)$yearOfFirstClimateImpact) {
         sim$CMI <- sim$CMInormal #replace with a raster with no climate anomaly
       }
@@ -447,7 +449,7 @@ foo <- function(mod, dat) {
 }
 
 resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm,
-                           cacheClimateRas, firstYear, doAssertion = P(sim)$doAssertion) {
+                           cacheClimateRas, firstYear, doAssertion) {
   # Restructured to test time for number of characters (entering time as XX or YYYY)
   if (nchar(time) <= 3) {
     time <- time + 2001 #2001 is purely arbirtary for Tati's sake due to kNN - boo relative years
