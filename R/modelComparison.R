@@ -55,10 +55,8 @@ prepValidationData <- function(PSPmodelData, validationProportion) {
 
   #randomly sample, stratified by OrigPlotID1
   validationPlots <- PSPmodelData[OrigPlotID1 %in% possiblePlots$OrigPlotID1]
-  validationPlots[, plotCount := .N, .(OrigPlotID1)]
-  validationPlots <- validationPlots[, .SD[sample(.N, size = c(plotCount - 2), replace = FALSE)],  .(OrigPlotID1)]
-  validationPlots[, plotCount := NULL]
-  summary(validationPlots)
+  validationPlots <- validationPlots[, .SD[sample(.N, size = c(.N - 2), replace = FALSE)],  .(OrigPlotID1)]
+
   if (targetN > availableN) {
     warning("not enough plots for current validation target")
   } else {
