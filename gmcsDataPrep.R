@@ -85,6 +85,9 @@ defineModule(sim, list(
                                  "would be used even though the first measurement falls outside the 2011 fitting period",
                                  "as the 2011 cutoff would remove this paired obsevation from the fitting data.",
                                  "If NULL, then validation dataset will instead be randomly sampled from available measurements.")),
+    defineParameter("stableClimateQuantile", "numeric", 0.9, 0, 1,
+                    desc = paste("if the simulation time exceeds the projected climate years, then missing years will be randomly",
+                                 "sampled from a subset of the projected climate using this quantile as a threshold")),
     defineParameter("useHeight", "logical", TRUE, NA, NA,
                     desc = paste("Use height be used to calculate biomass (in addition to DBH). If height is NA for individual",
                                  "trees, then only DBH will be used for those measurements")),
@@ -145,27 +148,29 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
     init = {
       # do stuff for this event
       sim <- Init(sim)
+      sim <- checkRasters(sim)
       sim <- scheduleEvent(sim, start(sim), eventType = "prepRasters", eventPriority = 1)
       sim <- scheduleEvent(sim, end(sim), eventType = "scrubGlobalEnv", eventPriority = 9)
+
     },
 
     prepRasters = {
-      sim$ATA <- resampleStacks(stack = sim$ATAstack, time = time(sim), isATA = TRUE,
-                                studyArea = sim$studyArea, rtm = sim$rasterToMatch,
-                                cacheClimateRas = P(sim)$cacheClimateRas,
-                                firstYear = P(sim)$yearOfFirstClimateImpact,
-                                doAssertion = P(sim)$doAssertion)
-      if (is.null(sim$ATA) & time(sim) < P(sim)$yearOfFirstClimateImpact) {
+
+      #determine time(sim) - in case of relative times used (e.g. start = 1, end = 100)
+      sim$ATA <- getCurrentClimate(climStack = sim$ATAstack, time = time(sim), isATA = TRUE,
+                                   firstYear = P(sim)$yearOfFirstClimateImpact,
+                                   scq = P(sim)$stableClimateQuantile)
+
+      if (is.null(sim$ATA)) {
         sim$ATA <- sim$rasterToMatch #replace with a raster with no climate anomaly
         sim$ATA[!is.na(sim$ATA)] <- 0
       }
 
-      sim$CMI <- resampleStacks(stack = sim$CMIstack, time = time(sim),
-                                studyArea = sim$studyArea, rtm = sim$rasterToMatch,
-                                cacheClimateRas = P(sim)$cacheClimateRas,
-                                firstYear = P(sim)$yearOfFirstClimateImpact,
-                                doAssertion = P(sim)$doAssertion)
-      if (is.null(sim$CMI) & time(sim) < P(sim)$yearOfFirstClimateImpact) {
+      sim$CMI <- getCurrentClimate(climStack = sim$CMIstack, time = time(sim),
+                                   firstYear = P(sim)$yearOfFirstClimateImpact,
+                                   scq = P(sim)$stableClimateQuantile)
+
+      if (is.null(sim$CMI)) {
         sim$CMI <- sim$CMInormal #replace with a raster with no climate anomaly
       }
 
@@ -184,9 +189,9 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-  #stupid-catch
+
   if (length(P(sim)$PSPperiod) < 2) {
-    stop("Please supply P(sim)$PSPperiod of length 2 or greater")
+    stop("Please supply P(sim)$PSPperiod of length 2")
   }
 
   if (any(is.null(sim$PSPmeasure_gmcs), is.null(sim$PSPplot_gmcs), is.null(sim$PSPgis_gmcs))) {
@@ -264,6 +269,19 @@ Init <- function(sim) {
                 path = outputPath(sim)) ## TODO: output this to disk and get R^2 from NLL
 
   return(invisible(sim))
+}
+
+checkRasters <- function(sim){
+  if (!compareRaster(sim$ATAstack, sim$rasterToMatch, stopiffalse = FALSE)) {
+    #must postProcess the rasters as a stack with terra
+    sim$ATAstack <- Cache(postProcess, sim$ATAstack, rasterToMatch = sim$rasterToMatch,
+                                studyArea = sim$studyArea, userTags = c("postProcess", "ATAstack"))
+  }
+  if (!compareRaster(sim$CMIstack, sim$rasterToMatch, stopiffalse = FALSE)) {
+    sim$CMIstack <- Cache(postProcess, sim$CMIstack, rasterToMatch = sim$rasterToMatch,
+                          studyArea = sim$studyArea, userTags = c("postProcess", "CMIstack"))
+  }
+  return(sim)
 }
 
 prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData, useHeight,
@@ -448,74 +466,35 @@ foo <- function(mod, dat) {
   return(gmcsModel)
 }
 
-resampleStacks <- function(stack, time, isATA = FALSE, studyArea, rtm,
-                           cacheClimateRas, firstYear, doAssertion) {
+getCurrentClimate <- function(climStack, time, isATA = FALSE, firstYear, scq) {
   # Restructured to test time for number of characters (entering time as XX or YYYY)
-  if (nchar(time) <= 3) {
-    time <- time + 2001 #2001 is purely arbirtary for Tati's sake due to kNN - boo relative years
-    message(paste0("Time entered is < 1900. Temporarily converting your current time as ",
-                   crayon::yellow("time + 2001"),
-                   "(year of Knn data collection). The current time is now ", time, ".",
-                   " \nIf the simulation is set up for more than 1000 years,\nplease provide the start and end time as ",
-                   crayon::yellow("YYYY")))
-  }
 
+  currentRas <- grep(pattern = time, x = names(climStack))
   if (time < firstYear) {
     return(NULL) #don't return climate data - the object will be modified to the reference conditions later
-  }
+  } else if (length(currentRas) == 1) {
+    yearRas <- climStack[[currentRas]]
+  } else if (time - firstYear >= nlayers(climStack)){
+    #he simulation time must be later than the projected climate, e.g. 2102 - 2011 > 90 years of projected annual climate
+    availableYears <- 1:raster::nlayers(climStack)
+    cutoff <- quantile(availableYears, probs = scq)
+    time <- sample(availableYears[availableYears >= cutoff], size = 1)
 
-  currentRas <- grep(pattern = time, x = names(stack))
-
-  if (length(currentRas) > 0) {
-    #if useCache is False, this generates 6 messages a year.
-
-    if (!compareRaster(stack[[currentRas]], rtm, stopiffalse = FALSE)) {
-      yearRas <- suppressWarnings({
-        postProcess(stack[[currentRas]],
-                    rasterToMatch = rtm,
-                    studyArea = studyArea,
-                    filename2 = NULL,
-                    method = "bilinear",
-                    useCache = cacheClimateRas)
-      })
-    } else {
-      yearRas <- stack[[currentRas]]
-    }
-
-    #need to suppress warnings about resampling method - it SHOULD be bilinear
+    message(paste0("re-using projected climate layers from the ", time, " layer in stack"))
+    yearRas <- climStack[[time]]
   } else {
-    if (time > 2100) {
-      message(crayon::yellow(paste0("The current time (", time,") is > 2100 and there are no predictions for this year.
-                                    Using climate predictions for 2100")))
-      currentRas <- raster::nlayers(stack)
-      yearRas <- postProcess(stack[[currentRas]],
-                             rasterToMatch = rtm,
-                             studyArea = studyArea,
-                             filename2 = NULL,
-                             method = "bilinear",
-                             useCache =  cacheClimateRas)
-    } else {
-      message(red(paste0("no climate effect for year ", time)))
-      #assume it is not yet 2011, pass raster with all 0s
-      yearRas <- rtm # Make a NULL raster for no climate effect
-      yearRas[!is.na(rtm)] <- 0
-    }
+    stop("cannot determine how to select current annual climate. Please review layer names")
   }
 
-  if (doAssertion){
-    #this is a safety catch in case there are NAs due to the resampling ---
-    #there may be due to the disparity in spatial resolution - 16/01/2020 Still haven't solved this from 4.5 km to 250 m
-    if (!is.null(yearRas[is.na(yearRas) & !is.na(rtm)])) {
-      medianVals <- median(getValues(yearRas), na.rm = TRUE)
-      yearRas[is.na(yearRas) & !is.na(rtm)] <- medianVals
-    }
-  }
   if (isATA == TRUE) {
-    #ATA was stored as an integer AND as tenth of a degree. So divide by 10 to get actual degrees
-    yearRas[] <- yearRas[] / 10
-    if (max(yearRas[], na.rm = TRUE) > 100) {
-      stop("ATA values do not appear to have converted to degrees. Please read over expected inputs")
+    #ATA was stored as an integer AND as tenth of a degree. Data uses degrees, so divide by ten
+    #ClimateNA point data (used for historical PSP climate) is output as degrees, so this discrepancy must be corrected
+    #better to explicitly do it here than implicitly in the input data
+    if (max(yearRas[], na.rm = TRUE) < 10) {
+      #this means the maximum temp anomaly is 1.0 degree, which should be impossible even in the most optimistic scenarios
+      warning("ATA values do not appear to have converted to degrees. Please read over expected inputs")
     }
+    yearRas[] <- yearRas[] / 10 #scale to degrees to make comparable with model data
   }
 
   return(yearRas)
@@ -777,6 +756,8 @@ sumPeriod <- function(x, rows, m, p, clim){
                                alsoExtract = "similar",
                                url = ata.url,
                                destinationPath = dPath,
+                               studyArea = sim$studyArea,
+                               rasterToMatch = sim$rasterToMatch,
                                fun = "raster::stack",
                                useCache = TRUE,
                                userTags = c(currentModule(sim), "ATAstack")
@@ -799,12 +780,14 @@ sumPeriod <- function(x, rows, m, p, clim){
     } else {
       stop("unrecognized GCM in P(sim)$GCM")
     }
-    #These should not be called with RasterToMatch
+
     sim$CMIstack <- prepInputs(targetFile = cmi.tf,
                                archive = cmi.arc,
                                alsoExtract = "similar",
                                url = cmi.url,
                                destinationPath = dPath,
+                               rasterTomatch = sim$rasterToMatch,
+                               studyArea = sim$studyArea,
                                fun = "raster::stack",
                                useCache = TRUE,
                                userTags = c(currentModule(sim), "CMIstack")
