@@ -190,12 +190,14 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 ### template initialization
 Init <- function(sim) {
 
+
   if (is.null(sim$mcsModel) | is.null(sim$gcsModel)) {
     message ("building climate-sensitive growth and mortailty models")
     #stupid-catch
     if (length(P(sim)$PSPperiod) < 2) {
       stop("Please supply P(sim)$PSPperiod of length 2 or greater")
     }
+
 
     if (any(is.null(sim$PSPmeasure_gmcs), is.null(sim$PSPplot_gmcs), is.null(sim$PSPgis_gmcs))) {
       stop("The PSP objects are being supplied incorrectly. Please review loadOrder argument in simInit")
@@ -493,6 +495,8 @@ getCurrentClimate <- function(climStack, time, isATA = FALSE, firstYear, scq) {
 
     message(paste0("re-using projected climate layers from the ", time, " layer in stack"))
     yearRas <- climStack[[time]]
+    yearRas <- raster::readAll(yearRas)
+    #TODO: the CMI layer is being written to the temp drive...
   } else {
     stop("cannot determine how to select current annual climate. Please review layer names")
   }
@@ -501,10 +505,6 @@ getCurrentClimate <- function(climStack, time, isATA = FALSE, firstYear, scq) {
     #ATA was stored as an integer AND as tenth of a degree. Data uses degrees, so divide by ten
     #ClimateNA point data (used for historical PSP climate) is output as degrees, so this discrepancy must be corrected
     #better to explicitly do it here than implicitly in the input data
-    if (max(yearRas[], na.rm = TRUE) < 10) {
-      #this means the maximum temp anomaly is 1.0 degree, which should be impossible even in the most optimistic scenarios
-      warning("ATA values do not appear to have converted to degrees. Please read over expected inputs")
-    }
     yearRas[] <- yearRas[] / 10 #scale to degrees to make comparable with model data
   }
 
