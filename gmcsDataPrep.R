@@ -190,85 +190,96 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 ### template initialization
 Init <- function(sim) {
 
-  if (length(P(sim)$PSPperiod) < 2) {
-    stop("Please supply P(sim)$PSPperiod of length 2")
+  if (is.null(sim$mcsModel) | is.null(sim$gcsModel)) {
+    message ("building climate-sensitive growth and mortailty models")
+    #stupid-catch
+    if (length(P(sim)$PSPperiod) < 2) {
+      stop("Please supply P(sim)$PSPperiod of length 2 or greater")
+    }
+
+    if (any(is.null(sim$PSPmeasure_gmcs), is.null(sim$PSPplot_gmcs), is.null(sim$PSPgis_gmcs))) {
+      stop("The PSP objects are being supplied incorrectly. Please review loadOrder argument in simInit")
+    }
+
+    sim$PSPmodelData <- Cache(prepModelData,
+                              studyAreaPSP = sim$studyAreaPSP,
+                              PSPgis = sim$PSPgis_gmcs,
+                              PSPmeasure = sim$PSPmeasure_gmcs,
+                              PSPplot = sim$PSPplot_gmcs,
+                              PSPclimData = sim$PSPclimData,
+                              useHeight = P(sim)$useHeight,
+                              biomassModel = P(sim)$biomassModel,
+                              PSPperiod = P(sim)$PSPperiod,
+                              minDBH = P(sim)$minDBH,
+                              useCache = P(sim)$.useCache,
+                              userTags = c("gmcsDataPrep", "prepModelData"))
+
+    ####building validation data####
+    message("Preparing validation dataset")
+    if (!is.null(sim$PSPvalidationPeriod)) {
+      #build validation data from observations in PSPvalidationPeriod that also aren't in model data
+      sim$PSPvalidationData <- Cache(prepModelData,
+                                     studyAreaPSP = sim$studyAreaPSP,
+                                     PSPgis = sim$PSPgis_gmcs,
+                                     PSPmeasure = sim$PSPmeasure_gmcs,
+                                     PSPplot = sim$PSPplot_gmcs,
+                                     PSPclimData = sim$PSPclimData,
+                                     useHeight = P(sim)$useHeight,
+                                     biomassModel = P(sim)$biomassModel,
+                                     PSPperiod = P(sim)$PSPvalidationPeriod,
+                                     minDBH = P(sim)$minDBH,
+                                     useCache = P(sim)$.useCache,
+                                     userTags = c("gmcsDataPrep", "prepValidationData"))
+
+      #this removes all observations that are identical
+      sim$PSPvalidationData <- setkey(sim$PSPvalidationData)[!sim$PSPmodelData]
+      #this removes all observations for which there is no random effect in the fitting data
+      sim$PSPvalidationData <- sim$PSPvalidationData[OrigPlotID1 %in% sim$PSPmodelData$OrigPlotID1, ]
+    } else {
+      # sample validation data from PSPmodelData
+      outData <- Cache(prepValidationData,
+                       PSPmodelData = sim$PSPmodelData,
+                       validationProportion = P(sim)$validationProportion,
+                       useCache = P(sim)$.useCache,
+                       userTags = c("gmcsDataPrep", "prepValidationData"))
+      sim$PSPmodelData <- outData$PSPmodelData #with some plots removed
+      sim$PSPvalidationData <- outData$PSPvalidationData
+
+    }
+
+    ####model building####
+    #only replace if missing
+    if (is.null(sim$gcsModel)) {
+    sim$gcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
+                                   model = P(sim)$growthModel,
+                                   type = "growth")
+    }
+
+    if (is.null(sim$mcsModel)) {
+    sim$mcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
+                                   model = P(sim)$mortalityModel,
+                                   type = "mortality")
+
+    }
+
+    sim$nullMortalityModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
+                                             model = P(sim)$nullMortalityModel,
+                                             type = "mortality")
+    sim$nullGrowthModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
+                                          model = P(sim)$nullMortalityModel,
+                                          type = "mortality")
+
+    #reporting NLL as comparison statistic - could do RME or MAE?
+    compareModels(nullGrowth = sim$nullGrowthModel,
+                  nullMortality = sim$nullMortalityModel,
+                  gcs = sim$gcsModel,
+                  mcs = sim$mcsModel,
+                  validationData = sim$PSPvalidationData,
+                  doPlotting = P(sim)$doPlotting,
+                  path = outputPath(sim))
+
+    return(invisible(sim))
   }
-
-  if (any(is.null(sim$PSPmeasure_gmcs), is.null(sim$PSPplot_gmcs), is.null(sim$PSPgis_gmcs))) {
-    stop("The PSP objects are being supplied incorrectly. Please review loadOrder argument in simInit")
-  }
-
-  sim$PSPmodelData <- Cache(prepModelData,
-                            studyAreaPSP = sim$studyAreaPSP,
-                            PSPgis = sim$PSPgis_gmcs,
-                            PSPmeasure = sim$PSPmeasure_gmcs,
-                            PSPplot = sim$PSPplot_gmcs,
-                            PSPclimData = sim$PSPclimData,
-                            useHeight = P(sim)$useHeight,
-                            biomassModel = P(sim)$biomassModel,
-                            PSPperiod = P(sim)$PSPperiod,
-                            minDBH = P(sim)$minDBH,
-                            useCache = P(sim)$.useCache,
-                            userTags = c("gmcsDataPrep", "prepModelData"))
-
-  ####building validation data####
-  message("Preparing validation dataset")
-  if (!is.null(sim$PSPvalidationPeriod)) {
-    #build validation data from observations in PSPvalidationPeriod that also aren't in model data
-    sim$PSPvalidationData <- Cache(prepModelData,
-                                   studyAreaPSP = sim$studyAreaPSP,
-                                   PSPgis = sim$PSPgis_gmcs,
-                                   PSPmeasure = sim$PSPmeasure_gmcs,
-                                   PSPplot = sim$PSPplot_gmcs,
-                                   PSPclimData = sim$PSPclimData,
-                                   useHeight = P(sim)$useHeight,
-                                   biomassModel = P(sim)$biomassModel,
-                                   PSPperiod = P(sim)$PSPvalidationPeriod,
-                                   minDBH = P(sim)$minDBH,
-                                   useCache = P(sim)$.useCache,
-                                   userTags = c("gmcsDataPrep", "prepValidationData"))
-
-    #this removes all observations that are identical
-    sim$PSPvalidationData <- setkey(sim$PSPvalidationData)[!sim$PSPmodelData]
-    #this removes all observations for which there is no random effect in the fitting data
-    sim$PSPvalidationData <- sim$PSPvalidationData[OrigPlotID1 %in% sim$PSPmodelData$OrigPlotID1, ]
-  } else {
-    # sample validation data from PSPmodelData
-    outData <- Cache(prepValidationData,
-                     PSPmodelData = sim$PSPmodelData,
-                     validationProportion = P(sim)$validationProportion,
-                     useCache = P(sim)$.useCache,
-                     userTags = c("gmcsDataPrep", "prepValidationData"))
-    sim$PSPmodelData <- outData$PSPmodelData #with some plots removed
-    sim$PSPvalidationData <- outData$PSPvalidationData
-
-  }
-
-  ####model building####
-  sim$gcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
-                                 model = P(sim)$growthModel,
-                                 type = "growth")
-  sim$mcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
-                                 model = P(sim)$mortalityModel,
-                                 type = "mortality")
-
-  sim$nullMortalityModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
-                                           model = P(sim)$nullMortalityModel,
-                                           type = "mortality")
-  sim$nullGrowthModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
-                                        model = P(sim)$nullMortalityModel,
-                                        type = "mortality")
-
-  #reporting NLL as comparison statistic - could do RME or MAE?
-  compareModels(nullGrowth = sim$nullGrowthModel,
-                nullMortality = sim$nullMortalityModel,
-                gcs = sim$gcsModel,
-                mcs = sim$mcsModel,
-                validationData = sim$PSPvalidationData,
-                doPlotting = P(sim)$doPlotting,
-                path = outputPath(sim)) ## TODO: output this to disk and get R^2 from NLL
-
-  return(invisible(sim))
 }
 
 checkRasters <- function(sim){
