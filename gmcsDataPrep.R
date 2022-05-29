@@ -256,15 +256,15 @@ Init <- function(sim) {
     ####model building####
     #only replace if missing
     if (is.null(sim$gcsModel)) {
-    sim$gcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
-                                   model = P(sim)$growthModel,
-                                   type = "growth")
+      sim$gcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
+                                     model = P(sim)$growthModel,
+                                     type = "growth")
     }
 
     if (is.null(sim$mcsModel)) {
-    sim$mcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
-                                   model = P(sim)$mortalityModel,
-                                   type = "mortality")
+      sim$mcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
+                                     model = P(sim)$mortalityModel,
+                                     type = "mortality")
 
     }
 
@@ -283,9 +283,9 @@ Init <- function(sim) {
                   validationData = sim$PSPvalidationData,
                   doPlotting = P(sim)$doPlotting,
                   path = outputPath(sim))
-
-    return(invisible(sim))
   }
+
+  return(invisible(sim))
 }
 
 checkRasters <- function(sim){
