@@ -62,6 +62,8 @@ defineModule(sim, list(
                     quote(nlme::lme(mortality ~ logAge, random = ~1 | OrigPlotID1,
                                     weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)), NA, NA,
                     desc = "a null model used only for comparative purposes"),
+    defineParameter("prepClimateLayers", "logical", TRUE,
+                    desc = "schedule annual retrieval of climate layers when running simulation"),
     defineParameter("PSPab_damageColsToExclude", "numeric",3, NA, NA,
                     desc = paste("if sourcing Alberta PSP, which tree damage sources to exclude, if any.",
                                  "Defaults to Mountain Pine Beetle. Codes can be found in GOA PSP Manual.",
@@ -149,7 +151,9 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
       # do stuff for this event
       sim <- Init(sim)
       sim <- checkRasters(sim)
-      sim <- scheduleEvent(sim, start(sim), eventType = "prepRasters", eventPriority = 1)
+      if (P(sim)$prepClimateLayers) {
+        sim <- scheduleEvent(sim, start(sim), eventType = "prepRasters", eventPriority = 1)
+      }
       sim <- scheduleEvent(sim, end(sim), eventType = "scrubGlobalEnv", eventPriority = 9)
 
     },
