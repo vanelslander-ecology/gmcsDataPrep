@@ -160,22 +160,25 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 
     prepRasters = {
 
-      #determine time(sim) - in case of relative times used (e.g. start = 1, end = 100)
-      sim$ATA <- getCurrentClimate(climStack = sim$ATAstack, time = time(sim), isATA = TRUE,
-                                   firstYear = P(sim)$yearOfFirstClimateImpact,
-                                   scq = P(sim)$stableClimateQuantile)
-
-      if (is.null(sim$ATA)) {
+      if (time(sim) < P(sim)$yearOfFirstClimateImpact){
         sim$ATA <- sim$rasterToMatch #replace with a raster with no climate anomaly
         sim$ATA[!is.na(sim$ATA)] <- 0
-      }
-
-      sim$CMI <- getCurrentClimate(climStack = sim$CMIstack, time = time(sim),
-                                   firstYear = P(sim)$yearOfFirstClimateImpact,
-                                   scq = P(sim)$stableClimateQuantile)
-
-      if (is.null(sim$CMI)) {
         sim$CMI <- sim$CMInormal #replace with a raster with no climate anomaly
+      } else {
+        #check if current time is later than projected years
+        if (time(sim) - start(sim) <= raster::nlayers(sim$ATAstack)) {
+          timeToUse <- time(sim)
+        } else {
+          #he simulation time must be later than the projected climate, e.g. 2102 - 2011 > 90 years of projected annual climate
+          availableYears <- 1:raster::nlayers(climStack)
+          cutoff <- quantile(availableYears, probs = scq)
+          timeToUse <- sample(availableYears[availableYears >= cutoff], size = 1)
+        }
+
+        sim$ATA <- getCurrentClimate(climStack = sim$ATAstack, time = timeToUse, isATA = TRUE)
+
+
+        sim$CMI <- getCurrentClimate(climStack = sim$CMIstack, time = timeToUse)
       }
 
       sim <- scheduleEvent(sim, time(sim) + 1, eventType = "prepRasters", eventPriority = 1)
@@ -193,7 +196,6 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-
 
   if (is.null(sim$mcsModel) | is.null(sim$gcsModel)) {
     message ("building climate-sensitive growth and mortailty models")
@@ -483,27 +485,12 @@ foo <- function(mod, dat) {
   return(gmcsModel)
 }
 
-getCurrentClimate <- function(climStack, time, isATA = FALSE, firstYear, scq) {
-  # Restructured to test time for number of characters (entering time as XX or YYYY)
+getCurrentClimate <- function(climStack, time, isATA = FALSE) {
 
-  currentRas <- grep(pattern = time, x = names(climStack))
-  if (time < firstYear) {
-    return(NULL) #don't return climate data - the object will be modified to the reference conditions later
-  } else if (length(currentRas) == 1) {
-    yearRas <- climStack[[currentRas]]
-  } else if (time - firstYear >= nlayers(climStack)){
-    #he simulation time must be later than the projected climate, e.g. 2102 - 2011 > 90 years of projected annual climate
-    availableYears <- 1:raster::nlayers(climStack)
-    cutoff <- quantile(availableYears, probs = scq)
-    time <- sample(availableYears[availableYears >= cutoff], size = 1)
-
-    message(paste0("re-using projected climate layers from the ", time, " layer in stack"))
-    yearRas <- climStack[[time]]
-    yearRas <- raster::readAll(yearRas)
-    #TODO: the CMI layer is being written to the temp drive...
-  } else {
-    stop("cannot determine how to select current annual climate. Please review layer names")
-  }
+  yearRas <- climStack[[grep(pattern = time, x = names(climStack))]]
+  if (is.null(yearRas)) { stop("error with naming of climate raster stack")}
+  yearRas <- raster::readAll(yearRas)
+  #TODO: the CMI layer is being written to the temp drive... ATA is not because of value change
 
   if (isATA == TRUE) {
     #ATA was stored as an integer AND as tenth of a degree. Data uses degrees, so divide by ten
@@ -511,7 +498,6 @@ getCurrentClimate <- function(climStack, time, isATA = FALSE, firstYear, scq) {
     #better to explicitly do it here than implicitly in the input data
     yearRas[] <- yearRas[] / 10 #scale to degrees to make comparable with model data
   }
-
   return(yearRas)
 }
 
