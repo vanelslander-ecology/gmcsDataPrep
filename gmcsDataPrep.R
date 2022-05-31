@@ -731,8 +731,13 @@ sumPeriod <- function(x, rows, m, p, clim){
     sim$PSPclimData <- sim$PSPclimData[MAT != -9999] #missing plots get -9999 as variable
   }
 
-  if (!suppliedElsewhere("ATAstack", sim)) {
-    if (P(sim)$prepClimateLayers) {
+  if (!suppliedElsewhere("rasterToMatch", sim)) {
+    message("rasterToMatch not supplied. Generating from LCC2005")
+    sim$rasterToMatch <- prepInputsLCC(studyArea = sim$studyArea, filename2 = NULL, destinationPath = dPath)
+  }
+  if (P(sim)$prepClimateLayers) {
+    if (!suppliedElsewhere("ATAstack", sim)) {
+
       #These should not be called using rasterToMatch (stack, memory)
       if (P(sim)$GCM == "CCSM4_RCP4.5") {
         ata.url <- "https://drive.google.com/open?id=1sGRp0zNjlQUg6LXpEgG4anT2wx1jvuUQ"
@@ -762,10 +767,10 @@ sumPeriod <- function(x, rows, m, p, clim){
                                  userTags = c(currentModule(sim), "ATAstack"))
       #if a pixel is 10 degrees above average, needs 4S
     }
-  }
 
-  if (!suppliedElsewhere("CMIstack", sim)) {
-    if (P(sim)$prepClimateLayers) {
+
+    if (!suppliedElsewhere("CMIstack", sim)) {
+
       if (P(sim)$GCM == "CCSM4_RCP4.5") {
         cmi.url <- "https://drive.google.com/open?id=1ERoQmCuQp3_iffQ0kXN7SCQr07M7dawv"
         cmi.tf <- "Canada3ArcMinute_CCSM4_45_CMI2011-2100.grd"
@@ -792,28 +797,25 @@ sumPeriod <- function(x, rows, m, p, clim){
                                  fun = "raster::stack",
                                  useCache = TRUE,
                                  userTags = c(currentModule(sim), "CMIstack"))
+
+    }
+
+    if (!suppliedElsewhere("CMInormal", sim)) {
+      sim$CMInormal <- prepInputs(targetFile = "Canada3ArcMinute_normalCMI.grd",
+                                  archive = "Canada3ArcMinute_normalCMI.zip",
+                                  url = "https://drive.google.com/open?id=16YMgx9t2eW8-fT5YyW0xEbjKODYNCiys",
+                                  destinationPath = dPath,
+                                  fun = "raster::raster",
+                                  studyArea = sim$studyArea,
+                                  rasterToMatch = sim$rasterToMatch,
+                                  useCache = TRUE,
+                                  overwrite = TRUE,
+                                  userTags = c(currentModule(sim), "CMInormal"),
+                                  method = "bilinear",
+                                  alsoExtract = "Canada3ArcMinute_normalCMI.gri")
     }
   }
 
-  if (!suppliedElsewhere("rasterToMatch", sim)) {
-    message("rasterToMatch not supplied. Generating from LCC2005")
-    sim$rasterToMatch <- prepInputsLCC(studyArea = sim$studyArea, filename2 = NULL, destinationPath = dPath)
-  }
-
-  if (!suppliedElsewhere("CMInormal", sim)) {
-    sim$CMInormal <- prepInputs(targetFile = "Canada3ArcMinute_normalCMI.grd",
-                                archive = "Canada3ArcMinute_normalCMI.zip",
-                                url = "https://drive.google.com/open?id=16YMgx9t2eW8-fT5YyW0xEbjKODYNCiys",
-                                destinationPath = dPath,
-                                fun = "raster::raster",
-                                studyArea = sim$studyArea,
-                                rasterToMatch = sim$rasterToMatch,
-                                useCache = TRUE,
-                                overwrite = TRUE,
-                                userTags = c(currentModule(sim), "CMInormal"),
-                                method = "bilinear",
-                                alsoExtract = "Canada3ArcMinute_normalCMI.gri")
-  }
   return(invisible(sim))
 }
 ### add additional events as needed by copy/pasting from above
