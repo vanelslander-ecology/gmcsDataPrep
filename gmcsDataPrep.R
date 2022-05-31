@@ -735,64 +735,67 @@ sumPeriod <- function(x, rows, m, p, clim){
   }
 
   if (!suppliedElsewhere("ATAstack", sim)) {
-    #These should not be called using rasterToMatch (stack, memory)
-    if (P(sim)$GCM == "CCSM4_RCP4.5") {
-      ata.url <- "https://drive.google.com/open?id=1sGRp0zNjlQUg6LXpEgG4anT2wx1jvuUQ"
-      ata.tf <- "Can3ArcMinute_CCSM4_RCP45_ATA2011-2100.grd"
-      ata.arc <- "Canada3ArcMinute_CCSM4_45_ATA2011-2100.zip"
-    } else if (P(sim)$GCM == "CanESM2_RCP4.5") {
-      ata.url <- "https://drive.google.com/open?id=1d8wy70gxDcO2MKsQt7tYBpryKudE-99h"
-      ata.tf <- "Can3ArcMinute_CanESM2_RCP45_ATA2011-2100.grd"
-      ata.arc <- "Canada3ArcMinute_ATA2011-2100.zip"
-    } else if (P(sim)$GCM == "CCSM4_RCP8.5") {
-      ata.url <- "https://drive.google.com/open?id=1_LXyPRdWbUj_Kk3ab-bgjqDXcowg_lpM"
-      ata.tf <- "Can3ArcMinute_CCSM4_RCP85_ATA2011-2100.grd"
-      ata.arc <- "Canada3ArcMinute_CCSM4_85_ATA2011-2100.zip"
-    } else {
-      stop("unrecognized GCM in P(sim)$GCM")
-    }
+    if (P(sim)$prepClimateLayers) {
+      #These should not be called using rasterToMatch (stack, memory)
+      if (P(sim)$GCM == "CCSM4_RCP4.5") {
+        ata.url <- "https://drive.google.com/open?id=1sGRp0zNjlQUg6LXpEgG4anT2wx1jvuUQ"
+        ata.tf <- "Can3ArcMinute_CCSM4_RCP45_ATA2011-2100.grd"
+        ata.arc <- "Canada3ArcMinute_CCSM4_45_ATA2011-2100.zip"
+      } else if (P(sim)$GCM == "CanESM2_RCP4.5") {
+        ata.url <- "https://drive.google.com/open?id=1d8wy70gxDcO2MKsQt7tYBpryKudE-99h"
+        ata.tf <- "Can3ArcMinute_CanESM2_RCP45_ATA2011-2100.grd"
+        ata.arc <- "Canada3ArcMinute_ATA2011-2100.zip"
+      } else if (P(sim)$GCM == "CCSM4_RCP8.5") {
+        ata.url <- "https://drive.google.com/open?id=1_LXyPRdWbUj_Kk3ab-bgjqDXcowg_lpM"
+        ata.tf <- "Can3ArcMinute_CCSM4_RCP85_ATA2011-2100.grd"
+        ata.arc <- "Canada3ArcMinute_CCSM4_85_ATA2011-2100.zip"
+      } else {
+        stop("unrecognized GCM in P(sim)$GCM")
+      }
 
-    sim$ATAstack <- prepInputs(targetFile = ata.tf,
-                               archive = ata.arc,
-                               alsoExtract = "similar",
-                               url = ata.url,
-                               destinationPath = dPath,
-                               studyArea = sim$studyArea,
-                               rasterToMatch = sim$rasterToMatch,
-                               fun = "raster::stack",
-                               useCache = TRUE,
-                               userTags = c(currentModule(sim), "ATAstack")
-    ) #if a pixel is 10 degrees above average, needs 4S
+      sim$ATAstack <- prepInputs(targetFile = ata.tf,
+                                 archive = ata.arc,
+                                 alsoExtract = "similar",
+                                 url = ata.url,
+                                 destinationPath = dPath,
+                                 studyArea = sim$studyArea,
+                                 rasterToMatch = sim$rasterToMatch,
+                                 fun = "raster::stack",
+                                 useCache = TRUE,
+                                 userTags = c(currentModule(sim), "ATAstack"))
+      #if a pixel is 10 degrees above average, needs 4S
+    }
   }
 
   if (!suppliedElsewhere("CMIstack", sim)) {
-    if (P(sim)$GCM == "CCSM4_RCP4.5") {
-      cmi.url <- "https://drive.google.com/open?id=1ERoQmCuQp3_iffQ0kXN7SCQr07M7dawv"
-      cmi.tf <- "Canada3ArcMinute_CCSM4_45_CMI2011-2100.grd"
-      cmi.arc <- "Canada3ArcMinute_CCSM4_45_CMI2011-2100.zip"
-    } else if (P(sim)$GCM == "CanESM2_RCP4.5") {
-      cmi.url <- "https://drive.google.com/open?id=1MwhK3eD1W6u0AgFbRgVg7j-qqyk0-3yA"
-      cmi.tf <- "Canada3ArcMinute_CMI2011-2100.grd"
-      cmi.arc <- "Canada3ArcMinute_CMI2011-2100.zip"
-    } else if (P(sim)$GCM == "CCSM4_RCP8.5") {
-      cmi.url <- "https://drive.google.com/open?id=1OcVsAQXKO4N4ZIESNmIZAI9IZcutctHX"
-      cmi.tf <- "Canada3ArcMinute_CCSM4_85_CMI2011-2100.grd"
-      cmi.arc <- "Canada3ArcMinute_CCSM4_85_CMI2011-2100.zip"
-    } else {
-      stop("unrecognized GCM in P(sim)$GCM")
-    }
+    if (P(sim)$prepClimateLayers) {
+      if (P(sim)$GCM == "CCSM4_RCP4.5") {
+        cmi.url <- "https://drive.google.com/open?id=1ERoQmCuQp3_iffQ0kXN7SCQr07M7dawv"
+        cmi.tf <- "Canada3ArcMinute_CCSM4_45_CMI2011-2100.grd"
+        cmi.arc <- "Canada3ArcMinute_CCSM4_45_CMI2011-2100.zip"
+      } else if (P(sim)$GCM == "CanESM2_RCP4.5") {
+        cmi.url <- "https://drive.google.com/open?id=1MwhK3eD1W6u0AgFbRgVg7j-qqyk0-3yA"
+        cmi.tf <- "Canada3ArcMinute_CMI2011-2100.grd"
+        cmi.arc <- "Canada3ArcMinute_CMI2011-2100.zip"
+      } else if (P(sim)$GCM == "CCSM4_RCP8.5") {
+        cmi.url <- "https://drive.google.com/open?id=1OcVsAQXKO4N4ZIESNmIZAI9IZcutctHX"
+        cmi.tf <- "Canada3ArcMinute_CCSM4_85_CMI2011-2100.grd"
+        cmi.arc <- "Canada3ArcMinute_CCSM4_85_CMI2011-2100.zip"
+      } else {
+        stop("unrecognized GCM in P(sim)$GCM")
+      }
 
-    sim$CMIstack <- prepInputs(targetFile = cmi.tf,
-                               archive = cmi.arc,
-                               alsoExtract = "similar",
-                               url = cmi.url,
-                               destinationPath = dPath,
-                               rasterTomatch = sim$rasterToMatch,
-                               studyArea = sim$studyArea,
-                               fun = "raster::stack",
-                               useCache = TRUE,
-                               userTags = c(currentModule(sim), "CMIstack")
-    )
+      sim$CMIstack <- prepInputs(targetFile = cmi.tf,
+                                 archive = cmi.arc,
+                                 alsoExtract = "similar",
+                                 url = cmi.url,
+                                 destinationPath = dPath,
+                                 rasterTomatch = sim$rasterToMatch,
+                                 studyArea = sim$studyArea,
+                                 fun = "raster::stack",
+                                 useCache = TRUE,
+                                 userTags = c(currentModule(sim), "CMIstack"))
+    }
   }
 
   if (!suppliedElsewhere("rasterToMatch", sim)) {
