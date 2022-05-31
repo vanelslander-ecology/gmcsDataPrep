@@ -631,22 +631,19 @@ sumPeriod <- function(x, rows, m, p, clim){
 
     if ("dummy" %in% P(sim)$PSPdataTypes) {
       message("generating randomized PSP data")
-      sim$PSPmeasure_gmcs <- Cache(prepInputs,
-                                        targetFile = "randomizedPSPmeasure_sppParams.rds",
+      sim$PSPmeasure_gmcs <- prepInputs(targetFile = "randomizedPSPmeasure_sppParams.rds",
                                         archive = "randomized_LandR_speciesParameters_Inputs.zip",
                                         url =  extractURL('PSPmeasure_gmcs', sim),
                                         destinationPath = dPath,
                                         fun = "readRDS")
 
-      sim$PSPplot_gmcs <- Cache(prepInputs,
-                                     targetFile = "randomizedPSPplot_sppParams.rds",
+      sim$PSPplot_gmcs <- prepInputs(targetFile = "randomizedPSPplot_sppParams.rds",
                                      archive = "randomized_LandR_speciesParameters_Inputs.zip",
                                      url = extractURL('PSPplot_gmcs', sim),
                                      destinationPath = dPath,
                                      fun = "readRDS")
 
-      sim$PSPgis_gmcs <- Cache(prepInputs,
-                                    targetFile = "randomizedPSPgis_sppParams.rds",
+      sim$PSPgis_gmcs <- prepInputs(targetFile = "randomizedPSPgis_sppParams.rds",
                                     archive = "randomized_LandR_speciesParameters_Inputs.zip",
                                     url = extractURL('PSPgis_gmcs', sim),
                                     overwrite = TRUE,
@@ -661,7 +658,7 @@ sumPeriod <- function(x, rows, m, p, clim){
       PSPplot_gmcs <- list()
 
       if ("BC" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
-        PSPbc <- Cache(prepInputsBCPSP, dPath = dPath, userTags = c(cacheTags, "BCPSP"))
+        PSPbc <- prepInputsBCPSP(dPath = dPath)
         PSPbc <- PSPclean::dataPurification_BCPSP(treeDataRaw = PSPbc$treeDataRaw,
                                                   plotHeaderDataRaw = PSPbc$plotHeaderDataRaw,
                                                   damageAgentCodes = PSPbc$pspBCdamageAgentCodes,
@@ -670,7 +667,7 @@ sumPeriod <- function(x, rows, m, p, clim){
         PSPplot_gmcs[["BC"]] <- PSPbc$plotHeaderData
       }
       if ("AB" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
-        PSPab <- Cache(prepInputsAlbertaPSP, dPath = dPath, userTags = c(cacheTags, "ABPSP"))
+        PSPab <- prepInputsAlbertaPSP(dPath = dPath)
         PSPab <- PSPclean::dataPurification_ABPSP(treeMeasure = PSPab$pspABtreeMeasure,
                                                   plotMeasure = PSPab$pspABplotMeasure,
                                                   tree = PSPab$pspABtree,
@@ -681,7 +678,7 @@ sumPeriod <- function(x, rows, m, p, clim){
       }
 
       if ("SK" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
-        PSPsk <- Cache(prepInputsSaskatchwanPSP, dPath = dPath, userTags = c(cacheTags, "SKPSP"))
+        PSPsk <- prepInputsSaskatchwanPSP(dPath = dPath, userTags = c(cacheTags, "SKPSP"))
         PSPsk <- PSPclean::dataPurification_SKPSP(SADataRaw = PSPsk$SADataRaw,
                                                   plotHeaderRaw = PSPsk$plotHeaderRaw,
                                                   measureHeaderRaw = PSPsk$measureHeaderRaw,
@@ -689,7 +686,7 @@ sumPeriod <- function(x, rows, m, p, clim){
         PSPmeasure_gmcs[["SK"]] <- PSPsk$treeData
         PSPplot_gmcs[["SK"]] <- PSPsk$plotHeaderData
 
-        TSPsk <- Cache(prepInputsSaskatchwanTSP, dPath = dPath, userTags = c(cacheTags, "SKTSP"))
+        TSPsk <- prepInputsSaskatchwanTSP(dPath = dPath)
         TSPsk <- PSPclean::dataPurification_SKTSP_Mistik(compiledPlotData = TSPsk$compiledPlotData,
                                                          compiledTreeData = TSPsk$compiledTreeData)
         PSPmeasure_gmcs[["SKtsp"]] <- TSPsk$treeData
@@ -697,7 +694,7 @@ sumPeriod <- function(x, rows, m, p, clim){
       }
 
       if ("NFI" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
-        PSPnfi <- Cache(prepInputsNFIPSP, dPath = dPath, userTags = c(cacheTags, "NFIPSP"))
+        PSPnfi <- prepInputsNFIPSP(dPath = dPath)
         PSPnfi <- PSPclean::dataPurification_NFIPSP(lgptreeRaw = PSPnfi$pspTreeMeasure,
                                                     lgpHeaderRaw = PSPnfi$pspHeader,
                                                     approxLocation = PSPnfi$pspLocation,
