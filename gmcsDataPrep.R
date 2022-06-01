@@ -678,7 +678,7 @@ sumPeriod <- function(x, rows, m, p, clim){
       }
 
       if ("SK" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
-        PSPsk <- prepInputsSaskatchwanPSP(dPath = dPath, userTags = c(cacheTags, "SKPSP"))
+        PSPsk <- prepInputsSaskatchwanPSP(dPath = dPath)
         PSPsk <- PSPclean::dataPurification_SKPSP(SADataRaw = PSPsk$SADataRaw,
                                                   plotHeaderRaw = PSPsk$plotHeaderRaw,
                                                   measureHeaderRaw = PSPsk$measureHeaderRaw,
