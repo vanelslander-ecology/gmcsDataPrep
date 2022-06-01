@@ -166,13 +166,15 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
         sim$CMI <- sim$CMInormal #replace with a raster with no climate anomaly
       } else {
         #check if current time is later than projected years
-        if (time(sim) - start(sim) <= raster::nlayers(sim$ATAstack)) {
+        if (time(sim) - start(sim) <= raster::nlayers(sim$ATAstack) -1) {
+          #-1 because start(sim) is a layer
           timeToUse <- time(sim)
         } else {
-          #he simulation time must be later than the projected climate, e.g. 2102 - 2011 > 90 years of projected annual climate
-          availableYears <- P(sim)$yearOfFirstClimateImpact + 1:raster::nlayers(climStack) - 1
-          cutoff <- quantile(availableYears, probs = scq)
+          #the simulation time must be later than the projected climate, e.g. 2102 - 2011 > 90 years of projected annual climate
+          availableYears <- P(sim)$yearOfFirstClimateImpact + 1:raster::nlayers(sim$ATAstack) - 1
+          cutoff <- quantile(availableYears, probs = P(sim)$stableClimateQuantile)
           timeToUse <- sample(availableYears[availableYears >= cutoff], size = 1)
+          message("simulation time has surpassed climate layers - using ", timeToUse, " for year ", time(sim))
         }
         sim$ATA <- getCurrentClimate(climStack = sim$ATAstack, time = timeToUse, isATA = TRUE)
         sim$CMI <- getCurrentClimate(climStack = sim$CMIstack, time = timeToUse)
