@@ -170,14 +170,11 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
           timeToUse <- time(sim)
         } else {
           #he simulation time must be later than the projected climate, e.g. 2102 - 2011 > 90 years of projected annual climate
-          availableYears <- 1:raster::nlayers(climStack)
+          availableYears <- P(sim)$yearOfFirstClimateImpact + 1:raster::nlayers(climStack) - 1
           cutoff <- quantile(availableYears, probs = scq)
           timeToUse <- sample(availableYears[availableYears >= cutoff], size = 1)
         }
-
         sim$ATA <- getCurrentClimate(climStack = sim$ATAstack, time = timeToUse, isATA = TRUE)
-
-
         sim$CMI <- getCurrentClimate(climStack = sim$CMIstack, time = timeToUse)
       }
 
