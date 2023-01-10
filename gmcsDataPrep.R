@@ -649,7 +649,7 @@ sumPeriod <- function(x, rows, m, p, clim){
                                     destinationPath = dPath,
                                     fun = "readRDS")
     } else {
-      if (!any(c("BC", "AB", "SK", "NFI", "all") %in% P(sim)$PSPdataTypes)) {
+      if (!any(c("BC", "AB", "SK", "ON", "NFI", "all") %in% P(sim)$PSPdataTypes)) {
         stop("Please review P(sim)$dataTypes - incorrect value specified")
       }
 
@@ -690,6 +690,16 @@ sumPeriod <- function(x, rows, m, p, clim){
                                                          compiledTreeData = TSPsk$compiledTreeData)
         PSPmeasure_gmcs[["SKtsp"]] <- TSPsk$treeData
         PSPplot_gmcs[["SKtsp"]] <- TSPsk$plotHeaderData
+      }
+
+      if ("ON" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
+        PSPon <- prepInputsOntarioPSP(dPath = dPath)
+        #sppEquiv should not be subset to species of interest the way LandR requires
+        #the latin is used to translate species into common names for the biomass equations
+        sppEquivForON <- LandR::sppEquivalencies_CA
+        PSPon <- PSPclean::dataPurification_ONPSP(PSPon, sppEquiv = sppEquivForON)
+        PSPmeasure_gmcs[["ON"]] <- PSPon$treeData
+        PSPplot_gmcs[["ON"]] <- PSPon$plotHeaderData
       }
 
       if ("NFI" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
