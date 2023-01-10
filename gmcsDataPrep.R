@@ -150,8 +150,9 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
     init = {
       # do stuff for this event
       sim <- Init(sim)
-      sim <- checkRasters(sim)
+
       if (P(sim)$prepClimateLayers) {
+        sim <- checkRasters(sim)
         sim <- scheduleEvent(sim, start(sim), eventType = "prepRasters", eventPriority = 1)
       }
       sim <- scheduleEvent(sim, end(sim), eventType = "scrubGlobalEnv", eventPriority = 9)
