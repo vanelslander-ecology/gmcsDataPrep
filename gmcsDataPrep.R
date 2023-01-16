@@ -15,8 +15,8 @@ defineModule(sim, list(
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
   reqdPkgs = list("crayon", "data.table", "gamlss", "ggplot2", "glmm", "MASS", "nlme", "sf", "sp", "raster",
                   "ianmseddy/LandR.CS@development",
-                  "ianmseddy/PSPclean@development (>= 0.1.2.9000)",
-                  "PredictiveEcology/LandR@development",
+                  "ianmseddy/PSPclean (>= 0.1.3.9000)",
+                  "PredictiveEcology/LandR (>= 1.1.0.9009)",
                   "PredictiveEcology/pemisc@development (>= 0.0.3.9002)"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -305,8 +305,7 @@ checkRasters <- function(sim){
 
 prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData, useHeight,
                           biomassModel, PSPperiod, minDBH) {
-  #first remove trees with 9999 as TreeNumber
-  PSPmeasure <- PSPmeasure[TreeNumber != '9999']
+
 
   #Crop points to studyAreaPSP
   if (!is.null(studyAreaPSP)) {
@@ -342,7 +341,6 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
 
   #Join data (should be small enough by now)
   PSPmeasure <- PSPmeasure[PSPplot, on = c('MeasureID', 'OrigPlotID1', 'MeasureYear')]
-  PSPmeasure[, c('Longitude', 'Latitude', 'Easting', 'Northing', 'Zone') := NULL]
 
   #Restrict to trees > minDBH
   PSPmeasure <- PSPmeasure[DBH >= minDBH,]
@@ -698,6 +696,7 @@ sumPeriod <- function(x, rows, m, p, clim){
         #sppEquiv should not be subset to species of interest the way LandR requires
         #the latin is used to translate species into common names for the biomass equations
         sppEquivForON <- LandR::sppEquivalencies_CA
+        #removing LandR:: may cause a local copy to be used - avoid.
         PSPon <- PSPclean::dataPurification_ONPSP(PSPon, sppEquiv = sppEquivForON)
         PSPmeasure_gmcs[["ON"]] <- PSPon$treeData
         PSPplot_gmcs[["ON"]] <- PSPon$plotHeaderData
@@ -717,6 +716,7 @@ sumPeriod <- function(x, rows, m, p, clim){
       PSPmeasure_gmcs <- rbindlist(PSPmeasure_gmcs, fill = TRUE)
       PSPplot_gmcs <- rbindlist(PSPplot_gmcs, fill = TRUE)
       PSPgis_gmcs <- geoCleanPSP(Locations = PSPplot_gmcs)
+      PSPplot_gmcs[, c("Zone", "Datum", "Easting", "Northing", "Latitude", "Longitude") := NULL]
       #keep only plots with valid coordinates
       PSPmeasure_gmcs <- PSPmeasure_gmcs[OrigPlotID1 %in% PSPgis_gmcs$OrigPlotID1,]
       PSPplot_gmcs <- PSPplot_gmcs[OrigPlotID1 %in% PSPgis_gmcs$OrigPlotID1,]
@@ -734,7 +734,6 @@ sumPeriod <- function(x, rows, m, p, clim){
   if (!suppliedElsewhere("PSPclimData", sim)) {
     sim$PSPclimData <- prepInputs(url = extractURL("PSPclimData"),
                                   destinationPath = dPath,
-                                  targetFile = "PSP_climateNAinputs_1901-2019MSY.csv",
                                   fun = "data.table::fread")
     setnames(sim$PSPclimData, old = c("id1", "id2"), new = c("OrigPlotID1", "OrigPlotID2"))
 
