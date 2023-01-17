@@ -115,7 +115,7 @@ defineModule(sim, list(
     expectsInput(objectName = "PSPclimData", objectClass = "data.table",
                  desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA with csv",
                               "Temp is represented as degrees, not tenth of degrees as with the raster data"),
-                 sourceURL = "https://drive.google.com/file/d/1jCp0K9wW6AQflVu8AojU_zSNYxt3m6Yk/"),
+                 sourceURL = "https://drive.google.com/file/d/17RrqiepZaGp9bVPkwWEQa0Nu4aQxRL8s/view?usp=share_link"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
                  desc = "template raster for ATA and CMI"),
     expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame",
