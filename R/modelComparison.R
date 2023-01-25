@@ -59,6 +59,7 @@ prepValidationData <- function(PSPmodelData, validationProportion) {
 
   if (targetN > availableN) {
     warning("not enough plots for current validation target")
+    validationPlots <- validationPlots[0,]
   } else {
     #reserve these extra plots for fitting
     validationPlots[, foo := sample(.N, replace = FALSE)]

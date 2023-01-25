@@ -14,9 +14,9 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
   reqdPkgs = list("crayon", "data.table", "gamlss", "ggplot2", "glmm", "MASS", "nlme", "sf", "sp", "raster",
-                  "ianmseddy/LandR.CS@development",
-                  "ianmseddy/PSPclean (>= 0.1.3.9000)",
-                  "PredictiveEcology/LandR (>= 1.1.0.9009)",
+                  "ianmseddy/LandR.CS@development (>= 0.0.3.9000)",
+                  "ianmseddy/PSPclean@development (>= 0.1.3.9000)",
+                  "PredictiveEcology/LandR@development (>= 1.1.0.9009)",
                   "PredictiveEcology/pemisc@development (>= 0.0.3.9002)"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -419,7 +419,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
 
   TrueUniques <- PSPmeasure[, .N, .(OrigPlotID1)]
 
-  pSppChange <- lapply(1:nrow(TrueUniques), rows = TrueUniques,
+  pSppChange <- lapply(TrueUniques$OrigPlotID1,
                        FUN = sumPeriod, m = PSPmeasure, p = PSPplot, clim = PSPclimData)
   PSPmodelData <- rbindlist(pSppChange)
   PSPmodelData$species <- factor(PSPmodelData$species)
@@ -595,15 +595,15 @@ pspIntervals <- function(i, M, P, Clim) {
 }
 
 sumPeriod <- function(x, rows, m, p, clim){
-  x <- rows[x,]
+
   #Duplicate plots arise from variable 'stand' (OrigPlotID2) that varied within the same plot.
   #this has been corrected by treating these as new plot ids.
   #note OrigPlotID2 has been removed in latest edition of PSPs, as stand/plot fields were concatenated
   #TODO: review this code and confirm if it is still necessary
   #Tree No. is not unique between stands, which means the same plot can have duplicate trees.
   #sort by year. Calculate the changes in biomass, inc. unobserved growth and mortality
-  #must match MeasureID between plot and measure data; OrigPlotID2 not present in P
-  m <- m[OrigPlotID1 == x$OrigPlotID1,] #subset data by plot
+  #must match MeasureID between plot and measure data;
+  m <- m[OrigPlotID1 == x,] #subset data by plot
   p <- p[MeasureID %in% m$MeasureID]
   clim <- clim[OrigPlotID1 %in% x,]
   p <- setkey(p, MeasureYear)
