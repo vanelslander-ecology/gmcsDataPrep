@@ -258,7 +258,7 @@ Init <- function(sim) {
       sim$PSPvalidationData <- sim$PSPvalidationData[OrigPlotID1 %in% sim$PSPmodelData$OrigPlotID1, ]
     } else {
       # sample validation data from PSPmodelData
-      outData <- Cache(prepValidationData,
+      outData <- Cache(FUN = prepValidationData,
                        PSPmodelData = sim$PSPmodelData,
                        validationProportion = P(sim)$validationProportion,
                        useCache = P(sim)$.useCache,
@@ -269,35 +269,43 @@ Init <- function(sim) {
     }
 
     ####model building####
-    #only replace if missing
+    #only replace the models if NULL, so user can supply their own models
     if (is.null(sim$gcsModel)) {
-      sim$gcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
-                                     model = P(sim)$growthModel,
-                                     type = "growth")
+      sim$gcsModel <- Cache(gmcsModelBuild,
+                            PSPmodelData = sim$PSPmodelData,
+                            model = P(sim)$growthModel,
+                            type = "growth",
+                            userTags = c("gcsModel"))
     }
-
     if (is.null(sim$mcsModel)) {
-      sim$mcsModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
-                                     model = P(sim)$mortalityModel,
-                                     type = "mortality")
-
+      sim$mcsModel <- Cache(gmcsModelBuild,
+                            PSPmodelData = sim$PSPmodelData,
+                            model = P(sim)$mortalityModel,
+                            type = "mortality",
+                            userTags = c("mcsModel"))
     }
-
-    sim$nullMortalityModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
-                                             model = P(sim)$nullMortalityModel,
-                                             type = "mortality")
-    sim$nullGrowthModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
-                                          model = P(sim)$nullMortalityModel,
-                                          type = "mortality")
-
+    if (is.null(sim$nullMortalityModel)) {
+      sim$nullMortalityModel <- Cache(gmcsModelBuild,
+                                      PSPmodelData = sim$PSPmodelData,
+                                      model = P(sim)$nullMortalityModel,
+                                      type = "mortality",
+                                      userTags = c("nullMcsModel"))
+    }
+    if (is.null(sim$nullGrowthMOdel)) {
+      sim$nullGrowthModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
+                                            model = P(sim)$nullMortalityModel,
+                                            type = "mortality")
+    }
     #reporting NLL as comparison statistic - could do RME or MAE?
-    compareModels(nullGrowth = sim$nullGrowthModel,
-                  nullMortality = sim$nullMortalityModel,
-                  gcs = sim$gcsModel,
-                  mcs = sim$mcsModel,
-                  validationData = sim$PSPvalidationData,
-                  doPlotting = P(sim)$doPlotting,
-                  path = outputPath(sim))
+    if (nrow(sim$PSPvalidationData) > 0) {
+      compareModels(nullGrowth = sim$nullGrowthModel,
+                    nullMortality = sim$nullMortalityModel,
+                    gcs = sim$gcsModel,
+                    mcs = sim$mcsModel,
+                    validationData = sim$PSPvalidationData,
+                    doPlotting = P(sim)$doPlotting,
+                    path = outputPath(sim))
+    }
   }
 
   return(invisible(sim))
