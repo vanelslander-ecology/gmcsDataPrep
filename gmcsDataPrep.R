@@ -45,10 +45,18 @@ defineModule(sim, list(
                     desc = paste("Quoted model used to predict growth in PSP data as a function of",
                                  "logAge, CMI, ATA, and their interactions, with PlotID as a random effect")),
     defineParameter("minDBH", "numeric", 10, 0, NA,
-                    desc = "The minimum DBH allowed. Each province uses different criteria for monitoring trees,
-                    so absence of entries < min(DBH) does not equate to absence of trees."),
+                    desc = "The minimum DBH (cm) allowed. Each province uses different criteria for monitoring trees,
+                    so absence of entries < min(DBH) does not equate to absence of trees. The following are approximations: ",
+                    "Ontario = 2.5 cm (after 1991), Alberta = 7.3, SK = 9.7, BC = 4, and NFI = 9."),
+    defineParameter("minTrees", "numeric", 30, 0, NA,
+                    desc = paste("The minimum number of trees per initial plot. This is prior to filtering by minimum DBH, ",
+                                 " This may not be suitable for every use case. The default is 30, based on the GCB paper ",
+                                 "doi: 10.1111/gcb.12994")),
+    defineParameter("minSize", "numeric", 0.02, 0, NA,
+                    desc = paste("The minimum size (in hectares) of growth plot. All metrics are adjusted for area.",
+                                 "The canonical methodlogy did not force a min. size but the minimum size was 0.04 ha.")),
     defineParameter("mortalityModel", class = "call",
-                    quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI,
+                    quote(gamlss::gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI,
                                  LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
                                  sigma.formula = ~logAge + ATA,  nu.formula = ~logAge, family = ZAIG, data = PSPmodelData)), NA, NA,
                     desc = paste("Quoted model used to predict mortality in PSP data as a function of logAge, CMI, ATA, and",
@@ -220,6 +228,8 @@ Init <- function(sim) {
                               biomassModel = P(sim)$biomassModel,
                               PSPperiod = P(sim)$PSPperiod,
                               minDBH = P(sim)$minDBH,
+                              minSize = P(sim)$minSize,
+                              minTrees = P(sim)$minTrees,
                               useCache = P(sim)$.useCache,
                               userTags = c("gmcsDataPrep", "prepModelData"))
 
@@ -237,6 +247,8 @@ Init <- function(sim) {
                                      biomassModel = P(sim)$biomassModel,
                                      PSPperiod = P(sim)$PSPvalidationPeriod,
                                      minDBH = P(sim)$minDBH,
+                                     minSize = P(sim)$minSize,
+                                     minTrees = P(sim)$minTrees,
                                      useCache = P(sim)$.useCache,
                                      userTags = c("gmcsDataPrep", "prepValidationData"))
 
@@ -305,7 +317,7 @@ checkRasters <- function(sim){
 }
 
 prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData, useHeight,
-                          biomassModel, PSPperiod, minDBH) {
+                          biomassModel, PSPperiod, minDBH, minSize, minTrees) {
 
 
   #Crop points to studyAreaPSP
@@ -344,21 +356,26 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
   PSPmeasure <- PSPmeasure[PSPplot, on = c('MeasureID', 'OrigPlotID1', 'MeasureYear')]
 
   #Restrict to trees > minDBH
+  message(yellow("Filtering by min. DBH"))
   PSPmeasure <- PSPmeasure[DBH >= minDBH,]
-  # PSPplot <- PSPplot[MeasureID %in% PSPmeasure$MeasureID] This will be repeated below
 
-  #Filter by > 30 trees at first measurement (P) to ensure forest.
+  #Filter by > minTrees at first measurement (P) to ensure forest. Default 30
   message(yellow("Filtering by min. 30 trees in earliest measurement"))
   forestPlots <- PSPmeasure[MeasureYear == baseYear, .(measures = .N), OrigPlotID1] %>%
-    .[measures >= 30,]
+    .[measures >= minTrees,]
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% forestPlots$OrigPlotID1,]
   PSPplot <- PSPplot[OrigPlotID1 %in% PSPmeasure$OrigPlotID1,]
   repeats <- PSPplot[, .(measures = .N), by = OrigPlotID1]
-  message(yellow(paste0("There are "), nrow(repeats), " PSPs with min. 30 trees at earliest measurement"))
+  message(yellow(paste0("There are "), nrow(repeats), " PSPs with min.", minTrees, " trees at earliest measurement"))
+
+  #Filter by min size
+  message(yellow("Filtering by min. plot size"))
+  bigEnough <- PSPplot[PlotSize > minSize, .N, .(OrigPlotID1)]
+  PSPplot <- PSPplot[OrigPlotID1 %in% bigEnough$OrigPlotID1]
+  message(yellow("There are ", nrow(bigEnough), " plots meeting the minimum plot size"))
 
   ## subset by biomass, because some plots have no species that can be estimated
-  ## these will be counted in the 30 trees requirement, but may result in a plot of NA biomass if repeat measures = 2+
-
+  ## these will be counted in the min trees requirement, but may result in a plot of NA biomass if repeat measures = 2+
   if (useHeight) {
     PSPmeasureNoHeight <- PSPmeasure[is.na(Height)]
     PSPmeasureHeight <- PSPmeasure[!is.na(Height)]
