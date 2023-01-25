@@ -164,7 +164,7 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
         sim <- checkRasters(sim)
         sim <- scheduleEvent(sim, start(sim), eventType = "prepRasters", eventPriority = 1)
       }
-      sim <- scheduleEvent(sim, end(sim), eventType = "scrubGlobalEnv", eventPriority = 9)
+      # sim <- scheduleEvent(sim, end(sim), eventType = "scrubGlobalEnv", eventPriority = 9)
 
     },
 
@@ -193,9 +193,9 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
       sim <- scheduleEvent(sim, time(sim) + 1, eventType = "prepRasters", eventPriority = 1)
     },
 
-    scrubGlobalEnv = {
-      on.exit(rm(PSPmodelData, envir = globalenv()), add = TRUE)
-    },
+    # scrubGlobalEnv = {
+      # on.exit(rm(PSPmodelData, envir = globalenv()), add = TRUE)
+    # },
 
     warning(paste("Undefined event type: '", current(sim)[1, "eventType", with = FALSE],
                   "' in module '", current(sim)[1, "moduleName", with = FALSE], "'", sep = ""))
