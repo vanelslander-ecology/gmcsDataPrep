@@ -400,7 +400,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
                                             includeHeight = FALSE,
                                             equationSource = biomassModel)
       tempOut$biomass <- c(tempOut$biomass, tempOutNoHeight$biomass)
-      tempOut$missedSpecies <- c(tempOut$missedSpecies, tempOutNoHeight$missedSpecies)
+      tempOut$missedSpecies <- unique(c(tempOut$missedSpecies, tempOutNoHeight$missedSpecies))
       PSPmeasure <- rbind(PSPmeasureHeight, PSPmeasureNoHeight)
     }
     PSPmeasure[, biomass := tempOut$biomass]
