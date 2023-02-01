@@ -15,7 +15,7 @@ defineModule(sim, list(
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
   reqdPkgs = list("crayon", "data.table", "gamlss", "ggplot2", "glmm", "MASS", "nlme", "sf", "sp", "raster",
                   "ianmseddy/LandR.CS@development (>= 0.0.3.9000)",
-                  "ianmseddy/PSPclean@development (>= 0.1.3.9000)",
+                  "ianmseddy/PSPclean@development (>= 0.1.3.9001)",
                   "PredictiveEcology/LandR@development (>= 1.1.0.9009)",
                   "PredictiveEcology/pemisc@development (>= 0.0.3.9002)"),
   parameters = rbind(
@@ -294,7 +294,7 @@ Init <- function(sim) {
       sim$nullMortalityModel <- Cache(gmcsModelBuild,
                                       PSPmodelData = sim$PSPmodelData,
                                       model = P(sim)$nullMortalityModel,
-                                      userTags = c("nullMortlaityModel"))
+                                      userTags = c("nullMortalityModel"))
     }
     #reporting NLL as comparison statistic - could do RME or MAE?
     if (nrow(sim$PSPvalidationData) > 0) {
@@ -368,7 +368,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
   PSPmeasure <- PSPmeasure[DBH >= minDBH,]
 
   #Filter by > minTrees at first measurement (P) to ensure forest. Default 30
-  message(yellow("Filtering by min. 30 trees in earliest measurement"))
+  message(yellow("Filtering by minimum trees in earliest measurement"))
   forestPlots <- PSPmeasure[MeasureYear == baseYear, .(measures = .N), OrigPlotID1] %>%
     .[measures >= minTrees,]
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% forestPlots$OrigPlotID1,]
@@ -712,7 +712,9 @@ sumPeriod <- function(x, rows, m, p, clim){
       PSPmeasure_gmcs <- rbindlist(PSPmeasure_gmcs, fill = TRUE)
       PSPplot_gmcs <- rbindlist(PSPplot_gmcs, fill = TRUE)
       PSPgis_gmcs <- geoCleanPSP(Locations = PSPplot_gmcs)
-      PSPplot_gmcs[, c("Zone", "Datum", "Easting", "Northing", "Latitude", "Longitude") := NULL]
+      locCols <- c("Zone", "Datum", "Easting", "Northing", "Latitude", "Longitude")
+      locCols <- locCols[locCols %in% names(PSPplot_gmcs)]
+      set(PSPplot_gmcs, NULL, locCols, NULL)
       #keep only plots with valid coordinates
       PSPmeasure_gmcs <- PSPmeasure_gmcs[OrigPlotID1 %in% PSPgis_gmcs$OrigPlotID1,]
       PSPplot_gmcs <- PSPplot_gmcs[OrigPlotID1 %in% PSPgis_gmcs$OrigPlotID1,]
