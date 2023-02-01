@@ -79,7 +79,7 @@ defineModule(sim, list(
                                  "Defaults to Mountain Pine Beetle. Codes can be found in GOA PSP Manual.",
                                  "Any damage sources that are not excluded are modelled as endogenous climate impact")),
     defineParameter("PSPbc_damageColsToExclude", "character", "IBM", NA, NA,
-                    desc = paste("if sourcing BC PSP, which tree damage sources to exclude, if any. Defaults to Mountain Pine Beetle.",
+                    desc = paste("for BC PSP, which tree damage sources to exclude, if any. Defaults to Mountain Pine Beetle.",
                                  "Any damage sources that are not excluded are modelled as endogenous climate impact")),
     defineParameter("PSPnfi_damageColsToExclude", "character", "IB", NA, NA,
                     desc = paste("if sourcing NFI PSP, which tree damage sources to exclude, if any. Defaults to bark beetles.",
@@ -91,15 +91,16 @@ defineModule(sim, list(
                     desc = paste("The years by which to compute climate normals and subset sampling plot data.",
                                  "Must be a vector of at least length 2.")),
     defineParameter("PSPvalidationPeriod", "numeric", NULL, NA, NA,
-                    desc = paste("the period to build the validation dataset. Must be greater than PSPperiod, e.g. c(1958-2018),",
-                                 "Subsequent observations are used only if they are within this period,",
+                    desc = paste("the period to build the validation dataset. Must be greater than PSPperiod",
+                                 "e.g. c(1958-2018). Subsequent observations are used only if they are within this period,",
                                  "but outside the fitting period. E.g. Successive measurements in 2004 and 2017",
                                  "would be used even though the first measurement falls outside the 2011 fitting period",
                                  "as the 2011 cutoff would remove this paired obsevation from the fitting data.",
                                  "If NULL, then validation dataset will instead be randomly sampled from available measurements.")),
     defineParameter("stableClimateQuantile", "numeric", 0.9, 0, 1,
-                    desc = paste("if the simulation time exceeds the projected climate years, then missing years will be randomly",
-                                 "sampled from a subset of the projected climate using this quantile as a threshold")),
+                    desc = paste("if the simulation time exceeds the projected climate years",
+                                 "then missing years will be randomly sampled from a subset of the",
+                                 "projected climate using this quantile as a threshold")),
     defineParameter("useHeight", "logical", TRUE, NA, NA,
                     desc = paste("Use height be used to calculate biomass (in addition to DBH). If height is NA for individual",
                                  "trees, then only DBH will be used for those measurements")),
@@ -493,7 +494,9 @@ getCurrentClimate <- function(climStack, time, isATA = FALSE) {
 }
 
 pspIntervals <- function(i, M, P, Clim) {
-  #Calculate climate variables.
+  #Calculate climate variables
+  #TODO: this should take the mean of whatever variable over the study period
+  #the anomaly can be calculated outside the function - this would support other climate variables
   #ACMI and ATA were added individually in separate model
   CMI <- mean(Clim$CMI[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]])
   ACMI <- mean(Clim$CMI[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]]) - P$CMI[1]
@@ -554,7 +557,7 @@ pspIntervals <- function(i, M, P, Clim) {
 
   changes <- bind(newborn, living)
 
-  #to prevent error if any table is empty
+
   changes$mortality <- 0
   dead$newGrowth <- 0
   changes <- bind(changes, dead)
