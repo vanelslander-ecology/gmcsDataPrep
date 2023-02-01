@@ -195,9 +195,9 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
       sim <- scheduleEvent(sim, time(sim) + 1, eventType = "prepRasters", eventPriority = 1)
     },
 
-    # scrubGlobalEnv = {
-      # on.exit(rm(PSPmodelData, envir = globalenv()), add = TRUE)
-    # },
+    scrubGlobalEnv = {
+      on.exit(rm(PSPmodelData, envir = globalenv()), add = TRUE)
+    },
 
     warning(paste("Undefined event type: '", current(sim)[1, "eventType", with = FALSE],
                   "' in module '", current(sim)[1, "moduleName", with = FALSE], "'", sep = ""))
@@ -471,6 +471,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
 
 gmcsModelBuild <- function(PSPmodelData, model) {
 
+  assign("PSPmodelData", PSPmodelData, globalenv())
   #this prevents cache envir arg from conflicting with eval envir
   gmcsModel <- eval(model, envir = environment())
 
