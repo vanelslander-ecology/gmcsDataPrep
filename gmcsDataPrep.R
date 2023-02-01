@@ -275,27 +275,25 @@ Init <- function(sim) {
       sim$gcsModel <- Cache(gmcsModelBuild,
                             PSPmodelData = sim$PSPmodelData,
                             model = P(sim)$growthModel,
-                            type = "growth",
                             userTags = c("gcsModel"))
     }
     if (is.null(sim$mcsModel)) {
       sim$mcsModel <- Cache(gmcsModelBuild,
                             PSPmodelData = sim$PSPmodelData,
                             model = P(sim)$mortalityModel,
-                            type = "mortality",
                             userTags = c("mcsModel"))
+    }
+    if (is.null(sim$nullGrowthModel)) {
+      sim$nullGrowthModel <- Cache(gmcsModelBuild,
+                                   PSPmodelData = sim$PSPmodelData,
+                                   model = P(sim)$nullMortalityModel,
+                                   userTags = c("nullGrowthModel"))
     }
     if (is.null(sim$nullMortalityModel)) {
       sim$nullMortalityModel <- Cache(gmcsModelBuild,
                                       PSPmodelData = sim$PSPmodelData,
                                       model = P(sim)$nullMortalityModel,
-                                      type = "mortality",
-                                      userTags = c("nullMcsModel"))
-    }
-    if (is.null(sim$nullGrowthMOdel)) {
-      sim$nullGrowthModel <- gmcsModelBuild(PSPmodelData = sim$PSPmodelData,
-                                            model = P(sim)$nullMortalityModel,
-                                            type = "mortality")
+                                      userTags = c("nullMortlaityModel"))
     }
     #reporting NLL as comparison statistic - could do RME or MAE?
     if (nrow(sim$PSPvalidationData) > 0) {
@@ -470,43 +468,11 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
   return(PSPmodelData)
 }
 
-gmcsModelBuild <- function(PSPmodelData, model, type) {
-  if (type == 'growth') {
-    gmcsModel <- Cache(eval, model, envir = environment(), userTags = c("gmcsDataPrep", "growthModel"))
-  } else {
-    assign(x = 'PSPmodelData', value = PSPmodelData, envir = globalenv())
-    #This is an obnoxious fix to an gmlss problem that requires objects in global env to predict
-    #Aug 2021:  if gmlss isn't used, this doesn't need to occur,
-    #neither does scheduling the removal from globalenv
-    #user will not necessarily use gmlss with mortality...
-    gmcsModel <- Cache(foo, mod = model, dat = PSPmodelData)
-  }
+gmcsModelBuild <- function(PSPmodelData, model) {
 
-  # for reference, Yong's original multivariate model (year substituted for ATA)
-  # gmcsModel <- lme(cbind(netBiomass, growth, mortality) ~ logAge + CMI + ATA + logAge:CMI + CMI:ATA + ATA
-  #logAge, random = ~1 | OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)
+  #this prevents cache envir arg from conflicting with eval envir
+  gmcsModel <- eval(model, envir = environment())
 
-  return(gmcsModel)
-}
-
-#This function exists to cache the converged model - it also needs review
-foo <- function(mod, dat) {
-  gmcsModel <- Cache(eval, mod, envir = environment(), userTags = c("gmcsDataPrep", "mortModel"))
-  defaultModel <- quote(gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI +
-                                 LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
-                               sigma.formula = ~logAge + ATA,
-                               nu.formula = ~logAge,
-                               family = ZAIG, data = dat))
-
-  #to ensure convergence, test whether quoted mod is the default first. How to ensure convergence for user-passed models?
-  #changed to identical from == - test
-  if (identical(mod, defaultModel)) {
-    i <- 1
-    while (!gmcsModel$converged & i <= 2) {
-      i <- i + 1
-      gmcsModel <- refit(gmcsModel)
-    }
-  }
   return(gmcsModel)
 }
 
