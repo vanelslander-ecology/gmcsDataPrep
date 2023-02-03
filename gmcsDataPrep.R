@@ -29,6 +29,11 @@ defineModule(sim, list(
     defineParameter("cacheClimateRas", "logical", TRUE, NA, NA,
                     desc = paste("should reprojection of climate rasters be cached every year?",
                                  "This will result in potentially > 100 rasters being cached")),
+    defineParameter("climateVariables", "character", c("ATA" = "MAT", "CMI"), NA, NA,
+                    desc = paste("character vector of climate variables from ClimateNA used in the growth/mortality models.",
+                                 "If a model uses a variable formula that represents a deviation from a climate normal,",
+                                 "it should be indicated with a name, where the name represents the variable in the formula.",
+                                 "For example, the default climate variable and model use the anomaly of MAT: ATA.")),
     defineParameter("doAssertion", "logical", getOption("LandR.assertions"), NA, NA,
                     desc = "assertions used to check climate data for NA values in valid pixels"),
     defineParameter("doPlotting", "logical", FALSE, NA, NA, desc = "if true, will plot and save models"),
@@ -221,6 +226,7 @@ Init <- function(sim) {
     }
 
     sim$PSPmodelData <- Cache(prepModelData,
+                              climateVariables = P(sim)$climateVariables,
                               studyAreaPSP = sim$studyAreaPSP,
                               PSPgis = sim$PSPgis_gmcs,
                               PSPmeasure = sim$PSPmeasure_gmcs,
@@ -240,6 +246,7 @@ Init <- function(sim) {
     if (!is.null(sim$PSPvalidationPeriod)) {
       #build validation data from observations in PSPvalidationPeriod that also aren't in model data
       sim$PSPvalidationData <- Cache(prepModelData,
+                                     climateVariables = P(sim)$climateVariables,
                                      studyAreaPSP = sim$studyAreaPSP,
                                      PSPgis = sim$PSPgis_gmcs,
                                      PSPmeasure = sim$PSPmeasure_gmcs,
@@ -324,7 +331,7 @@ checkRasters <- function(sim){
   return(sim)
 }
 
-prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData, useHeight,
+prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData, useHeight,
                           biomassModel, PSPperiod, minDBH, minSize, minTrees) {
 
 
@@ -339,10 +346,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
   } else {
     PSP_sa <- PSPgis
   }
-  #Restrict climate variables to only thosee of interest.. should be param
-  #Calculate the derived variable CMI - previously calculated in input objects
-  PSPclimData[, "CMI" := MAP - Eref]
-  PSPclimData <- PSPclimData[,.(OrigPlotID1, Year, CMI, MAT)]
+  #Restrict climate variables to only those of interest.. should be param
 
   #Filter other PSP datasets to those in study Area
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
@@ -417,7 +421,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
   message(yellow("No biomass estimate possible for these species: "))
   print(tempOut$missedSpecies)
 
-  #Filter by 3+ repeat measures - must be last filter criteria.
+  #Filter by 3+ measures - must be last filter criteria.
   #Some plots share ID but have different trees so simple count of plots insufficient to find repeat measures
   #Reduce PSPmeasure to MeasureID, PlotID1, PlotID2, MeasureYear, remove duplicates
   # then find repeat measures of MeasureYear, match back to MeasureID in both PSPplot and PSPmeasure.
@@ -433,20 +437,41 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
 
   message(yellow(paste0("There are "), nrow(repeats), " PSPs with min. 3 repeat measures"))
 
-  climate <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("CMI" = mean(CMI), "MAT" = mean(MAT)), OrigPlotID1]
-  #not all PSP plots exist in PSPclimData - this must be fixed - July 2020 IE
-  PSPmeasure <- PSPmeasure[OrigPlotID1 %in% climate$OrigPlotID1,]
-  PSPplot <- PSPplot[climate, on = "OrigPlotID1"]
+  tempVariableNames <- unname(climateVariables)
+  #data.table will assign the subset columns to the variable name, which is problematic if some are NULL
+  PSPclimData <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .SD,
+                             .SDcols = tempVariableNames, .(OrigPlotID1, Year)]
+  PSPmeasure <- PSPmeasure[OrigPlotID1 %in% PSPclimData$OrigPlotID1,]
 
   if (any(nrow(PSPclimData) == 0, nrow(PSPmeasure) == 0, nrow(PSPgis) == 0)) {
     stop('all existing PSP data has been filtered.Try adjusting parameters')
   }
 
-  TrueUniques <- PSPmeasure[, .N, .(OrigPlotID1)]
-
-  pSppChange <- lapply(TrueUniques$OrigPlotID1,
-                       FUN = sumPeriod, m = PSPmeasure, p = PSPplot, clim = PSPclimData)
+  pSppChange <- lapply(unique(PSPplot$OrigPlotID1),
+                       FUN = sumPeriod, m = PSPmeasure, p = PSPplot,
+                       clim = PSPclimData, climVar = tempVariableNames)
   PSPmodelData <- rbindlist(pSppChange)
+
+  #if c.m. has partial names, the empty names become "", with no names they are NULL
+  anomalies <- climateVariables[!names(climateVariables) %in% c("")]
+  if (length(anomalies) > 0){
+    #check if year is already subset - if not, subset to PSP period
+    anomalyData <- PSPclimData[Year >= min(PSPperiod) & Year <= max(PSPperiod),
+                               lapply(.SD, mean), .SDcol = anomalies, .(OrigPlotID1)]
+    setnames(anomalyData, old = anomalies, new = names(anomalies))
+    PSPmodelData <- anomalyData[PSPmodelData, on = c("OrigPlotID1")]
+
+    #recalculate the anomaly(s) via subtraction
+    for (i in length(anomalies)){
+      #index because the name isn't preserved if you take the object itself
+      temp <- anomalies[i]
+      setnames(PSPmodelData, c(temp, names(temp)), c("var", "anom"))
+      PSPmodelData[, anom := var - anom]
+      newOrderCols <- names(PSPmodelData)[!names(PSPmodelData) %in% c("var", "anom") ]
+      setcolorder(PSPmodelData, newOrderCols)
+      setnames(PSPmodelData, c("var", "anom"), c(temp, names(temp)))
+    }
+  }
   PSPmodelData$species <- factor(PSPmodelData$species)
   PSPmodelData$sppLong <- factor(PSPmodelData$sppLong)
 
@@ -457,15 +482,22 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
   #26/02/2019 after discussion we decided not to include species in model.
   # Decided to parameterize inclusion of ATA or year. ATA is better for projecting, but year is canonical
   # Sum species-specific mortality, growth, and net biomass by plot and year
-  # growth is set to 0.1 if it would be 0 (to avoid model error-  0 growth is caused by measurement error)
-  PSPmodelData <- PSPmodelData[, .("growth" = pmax(1, sum(growth_gm2)), "mortality" = sum(mortality_gm2),
-                                   "netBiomass" = sum(netBiomass_gm2), "biomass" = sum(biomass),
-                                   'CMI' = mean(CMI), 'CMIA' = mean(CMIA),
-                                   'AT' = mean(AT), "ATA" = mean(ATA), 'standAge' = mean(standAge),
-                                   'logAge' = mean(logAge), "periodLength" = mean(periodLength),
-                                   'year' = mean(year), 'plotSize' = mean(plotSize)),
-                               by = c("OrigPlotID1", "period")]
+  # growth is set to 0.1 if it would be 0 (to avoid model error - anyway  0 growth is measurement error)
 
+  #this step wouldn't be necessary if we aggregated species biomass in the interval function
+  PSPmodelSum <- PSPmodelData[, .("growth" = pmax(1, sum(growth_gm2)), "mortality" = sum(mortality_gm2),
+                                  "netBiomass" = sum(netBiomass_gm2), "biomass" = sum(biomass)),
+                              by = c("OrigPlotID1", "period")]
+  PSPmodelData[, c("species", "sppLong", "mortality_gm2", "growth_gm2", "netBiomass_gm2") := NULL]
+  subCols <- names(PSPmodelData)[!names(PSPmodelData) %in% c(names(PSPmodelSum))]
+
+  PSPmodelMean <- unique(PSPmodelData[, .SD, .SDcols = c(subCols, "OrigPlotID1", "period")])
+
+  PSPmodelData <- PSPmodelSum[PSPmodelMean, on = c("period", "OrigPlotID1")]
+
+
+  setcolorder(PSPmodelData, c("OrigPlotID1", "plotSize", "year", "period", "periodLength",
+                              "standAge", "logAge", "growth", "mortality", "biomass", "netBiomass"))
   return(PSPmodelData)
 }
 
@@ -494,15 +526,11 @@ getCurrentClimate <- function(climStack, time, isATA = FALSE) {
   return(yearRas)
 }
 
-pspIntervals <- function(i, M, P, Clim) {
+pspIntervals <- function(i, M, P, Clim, ClimVar) {
   #Calculate climate variables
-  #TODO: this should take the mean of whatever variable over the study period
-  #the anomaly can be calculated outside the function - this would support other climate variables
-  #ACMI and ATA were added individually in separate model
-  CMI <- mean(Clim$CMI[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]])
-  ACMI <- mean(Clim$CMI[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]]) - P$CMI[1]
-  ATA <- mean(Clim$MAT[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]]) - P$MAT[1]
-  AT <- mean(Clim$MAT[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]])
+  meanClim <- Clim[Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1],
+                   lapply(.SD, mean), .SDcol = ClimVar, .(OrigPlotID1)]
+
   period <- paste0(P$MeasureYear[i], "-", P$MeasureYear[i + 1])
 
   m1 <- M[MeasureYear == P$MeasureYear[i]]
@@ -572,25 +600,24 @@ pspIntervals <- function(i, M, P, Clim) {
                          "biomass" = biomass,
                          "growth" = netGrowth,
                          mortality)]
-
+  #join up with the climate means
   changes$period <- period
-  changes$CMI <- CMI
-  changes$CMIA <- ACMI
-  changes$ATA <- ATA
+
+
   changes$OrigPlotID1 <- P$OrigPlotID1[1]
   changes$year <- year
   changes$standAge <- P$baseSA[1] + P$MeasureYear[i + 1] - P$MeasureYear[1]
   changes$logAge <- log(changes$standAge)
   changes$plotSize <- P$PlotSize[1]
   changes$periodLength <- censusLength
-  changes$AT <- AT
 
+  changes <- meanClim[changes, on = "OrigPlotID1"]
   setcolorder(changes, c("OrigPlotID1", "period", "species", "sppLong", "growth", "mortality", "netBiomass",
-                         "CMI", "CMIA", "AT", "ATA", "standAge", "logAge", "plotSize", "periodLength"))
+                         "standAge", "logAge", "plotSize", "periodLength", ClimVar))
   return(changes)
 }
 
-sumPeriod <- function(x, rows, m, p, clim){
+sumPeriod <- function(x, rows, m, p, clim, climVar){
 
   #Duplicate plots arise from variable 'stand' (OrigPlotID2) that varied within the same plot.
   #this has been corrected by treating these as new plot ids.
@@ -607,7 +634,8 @@ sumPeriod <- function(x, rows, m, p, clim){
   periods <- nrow(p) - 1
 
   #For each interval
-  pSums <- lapply(1:periods, FUN = pspIntervals, M = m, P = p, Clim = clim)
+  pSums <- lapply(1:periods, FUN = pspIntervals,
+                  M = m, P = p, Clim = clim, ClimVar = climVar)
 
   pSums <- rbindlist(pSums)
   return(pSums)
