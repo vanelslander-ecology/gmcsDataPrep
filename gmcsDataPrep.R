@@ -15,7 +15,7 @@ defineModule(sim, list(
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
   reqdPkgs = list("crayon", "data.table", "gamlss", "ggplot2", "glmm", "MASS", "nlme", "sf", "sp", "raster",
                   "ianmseddy/LandR.CS@development (>= 0.0.3.9000)",
-                  "ianmseddy/PSPclean@development (>= 0.1.3.9001)",
+                  "ianmseddy/PSPclean@development (>= 0.1.3.9002)",
                   "PredictiveEcology/LandR@development (>= 1.1.0.9009)",
                   "PredictiveEcology/pemisc@development (>= 0.0.3.9002)"),
   parameters = rbind(
