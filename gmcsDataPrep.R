@@ -298,7 +298,9 @@ Init <- function(sim) {
 
     ## reporting NLL as comparison statistic - could do RME or MAE?
     if (nrow(sim$PSPvalidationData) > 0) {
-      assign("PSPmodelData", sim$PSPmodelData, .GlobalEnv)
+      assign("PSPmodelData", sim$PSPmodelData, .GlobalEnv) ## needed until end of sim
+      ## TODO: use more specific name to avoid clobbering user's global env objs
+      ## E.g., `._tmp_gmcsDataPrep_PSPmodelData_.`
       compareModels(nullGrowth = sim$nullGrowthModel,
                     nullMortality = sim$nullMortalityModel,
                     gcs = sim$gcsModel,
@@ -306,7 +308,6 @@ Init <- function(sim) {
                     validationData = sim$PSPvalidationData,
                     doPlotting = P(sim)$doPlotting,
                     path = outputPath(sim))
-      # rm(PSPmodelData, envir = .GlobalEnv) ## TODO
     }
   }
 
@@ -480,7 +481,9 @@ gmcsModelBuild <- function(PSPmodelData, model) {
 getCurrentClimate <- function(climStack, time, isATA = FALSE) {
   yearRas <- climStack[[grep(pattern = time, x = names(climStack))]]
   if (is.null(yearRas)) { stop("error with naming of climate raster stack")}
-  yearRas <- raster::readAll(yearRas)
+  yearRas <- if (!raster::inMemory(yearRas)) {
+    raster::readAll(yearRas)
+  }
   ## TODO: the CMI layer is being written to the temp drive... ATA is not because of value change
 
   if (isATA == TRUE) {
@@ -556,7 +559,6 @@ pspIntervals <- function(i, M, P, Clim) {
 
   changes <- bind(newborn, living)
 
-
   changes$mortality <- 0
   dead$newGrowth <- 0
   changes <- bind(changes, dead)
@@ -589,13 +591,13 @@ pspIntervals <- function(i, M, P, Clim) {
 }
 
 sumPeriod <- function(x, m, p, clim) {
-  # Duplicate plots arise from variable 'stand' (OrigPlotID2) that varied within the same plot.
-  # this has been corrected by treating these as new plot ids.
-  # note OrigPlotID2 has been removed in latest edition of PSPs, as stand/plot fields were concatenated
-  # TODO: review this code and confirm if it is still necessary
-  # Tree No. is not unique between stands, which means the same plot can have duplicate trees.
-  # sort by year. Calculate the changes in biomass, inc. unobserved growth and mortality
-  # must match MeasureID between plot and measure data;
+  ## Duplicate plots arise from variable 'stand' (OrigPlotID2) that varied within the same plot.
+  ## this has been corrected by treating these as new plot ids.
+  ## note OrigPlotID2 has been removed in latest edition of PSPs, as stand/plot fields were concatenated
+  ## TODO: review this code and confirm if it is still necessary
+  ## Tree No. is not unique between stands, which means the same plot can have duplicate trees.
+  ## sort by year. Calculate the changes in biomass, inc. unobserved growth and mortality
+  ## must match MeasureID between plot and measure data;
   m <- m[OrigPlotID1 == x,] #subset data by plot
   p <- p[MeasureID %in% m$MeasureID]
   clim <- clim[OrigPlotID1 %in% x,]
@@ -658,6 +660,7 @@ sumPeriod <- function(x, m, p, clim) {
         PSPmeasure_gmcs[["BC"]] <- PSPbc$treeData
         PSPplot_gmcs[["BC"]] <- PSPbc$plotHeaderData
       }
+
       if ("AB" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
         PSPab <- prepInputsAlbertaPSP(dPath = dPath)
         PSPab <- PSPclean::dataPurification_ABPSP(treeMeasure = PSPab$pspABtreeMeasure,
@@ -741,10 +744,10 @@ sumPeriod <- function(x, m, p, clim) {
     message("rasterToMatch not supplied. Generating from LCC2005")
     sim$rasterToMatch <- prepInputsLCC(studyArea = sim$studyArea, filename2 = NULL, destinationPath = dPath)
   }
+
   if (P(sim)$prepClimateLayers) {
     if (!suppliedElsewhere("ATAstack", sim)) {
-
-      #These should not be called using rasterToMatch (stack, memory)
+      ## These should not be called using rasterToMatch (stack, memory)
       if (P(sim)$GCM == "CCSM4_RCP4.5") {
         ata.url <- "https://drive.google.com/open?id=1sGRp0zNjlQUg6LXpEgG4anT2wx1jvuUQ"
         ata.tf <- "Can3ArcMinute_CCSM4_RCP45_ATA2011-2100.grd"
@@ -774,9 +777,8 @@ sumPeriod <- function(x, m, p, clim) {
       #if a pixel is 10 degrees above average, needs 4S
     }
 
-
+    ## TODO: call canClimateData directly
     if (!suppliedElsewhere("CMIstack", sim)) {
-
       if (P(sim)$GCM == "CCSM4_RCP4.5") {
         cmi.url <- "https://drive.google.com/open?id=1ERoQmCuQp3_iffQ0kXN7SCQr07M7dawv"
         cmi.tf <- "Canada3ArcMinute_CCSM4_45_CMI2011-2100.grd"
@@ -803,7 +805,6 @@ sumPeriod <- function(x, m, p, clim) {
                                  fun = "raster::stack",
                                  useCache = TRUE,
                                  userTags = c(currentModule(sim), "CMIstack"))
-
     }
 
     if (!suppliedElsewhere("CMInormal", sim)) {
