@@ -212,7 +212,6 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-
   if (is.null(sim$mcsModel) | is.null(sim$gcsModel)) {
     message("building climate-sensitive growth and mortailty models")
     #stupid-catch
@@ -239,10 +238,10 @@ Init <- function(sim) {
                               useCache = P(sim)$.useCache,
                               userTags = c("gmcsDataPrep", "prepModelData"))
 
-    ####building validation data####
+    ## building validation data
     message("Preparing validation dataset")
     if (!is.null(sim$PSPvalidationPeriod)) {
-      #build validation data from observations in PSPvalidationPeriod that also aren't in model data
+      ## build validation data from observations in PSPvalidationPeriod that also aren't in model data
       sim$PSPvalidationData <- Cache(prepModelData,
                                      studyAreaPSP = sim$studyAreaPSP,
                                      PSPgis = sim$PSPgis_gmcs,
@@ -258,24 +257,23 @@ Init <- function(sim) {
                                      useCache = P(sim)$.useCache,
                                      userTags = c("gmcsDataPrep", "prepValidationData"))
 
-      #this removes all observations that are identical
+      ## remove all observations that are identical
       sim$PSPvalidationData <- setkey(sim$PSPvalidationData)[!sim$PSPmodelData]
-      #this removes all observations for which there is no random effect in the fitting data
+      ## remove all observations for which there is no random effect in the fitting data
       sim$PSPvalidationData <- sim$PSPvalidationData[OrigPlotID1 %in% sim$PSPmodelData$OrigPlotID1, ]
     } else {
-      # sample validation data from PSPmodelData
+      ## sample validation data from PSPmodelData
       outData <- Cache(FUN = prepValidationData,
                        PSPmodelData = sim$PSPmodelData,
                        validationProportion = P(sim)$validationProportion,
                        useCache = P(sim)$.useCache,
                        userTags = c("gmcsDataPrep", "prepValidationData"))
-      sim$PSPmodelData <- outData$PSPmodelData #with some plots removed
+      sim$PSPmodelData <- outData$PSPmodelData ## with some plots removed
       sim$PSPvalidationData <- outData$PSPvalidationData
-
     }
 
-    ####model building####
-    #only replace the models if NULL, so user can supply their own models
+    ## model building
+    ## only replace the models if NULL, so user can supply their own models
     if (is.null(sim$gcsModel)) {
       sim$gcsModel <- Cache(gmcsModelBuild,
                             PSPmodelData = sim$PSPmodelData,
@@ -300,7 +298,8 @@ Init <- function(sim) {
                                       model = P(sim)$nullMortalityModel,
                                       userTags = c("nullMortalityModel"))
     }
-    #reporting NLL as comparison statistic - could do RME or MAE?
+
+    ## reporting NLL as comparison statistic - could do RME or MAE?
     if (nrow(sim$PSPvalidationData) > 0) {
       compareModels(nullGrowth = sim$nullGrowthModel,
                     nullMortality = sim$nullMortalityModel,
@@ -317,7 +316,7 @@ Init <- function(sim) {
 
 checkRasters <- function(sim){
   if (!compareRaster(sim$ATAstack, sim$rasterToMatch, stopiffalse = FALSE)) {
-    #must postProcess the rasters as a stack with terra
+    ## must postProcess the rasters as a stack with terra
     sim$ATAstack <- Cache(postProcess, sim$ATAstack, rasterToMatch = sim$rasterToMatch,
                           studyArea = sim$studyArea, userTags = c("postProcess", "ATAstack"))
   }
@@ -330,9 +329,7 @@ checkRasters <- function(sim){
 
 prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData, useHeight,
                           biomassModel, PSPperiod, minDBH, minSize, minTrees) {
-
-
-  #Crop points to studyAreaPSP
+  ## crop points to studyAreaPSP
   if (!is.null(studyAreaPSP)) {
     tempSA <- st_as_sf(studyAreaPSP) %>%
       st_transform(tempSA, crs = crs(PSPgis))
@@ -343,8 +340,8 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
   } else {
     PSP_sa <- PSPgis
   }
-  #Restrict climate variables to only thosee of interest.. should be param
-  #Calculate the derived variable CMI - previously calculated in input objects
+  ## Restrict climate variables to only those of interest. TODO: should be param.
+  ## Calculate the derived variable CMI - previously calculated in input objects
   PSPclimData[, "CMI" := MAP - Eref]
   PSPclimData <- PSPclimData[, .(OrigPlotID1, Year, CMI, MAT)]
 
@@ -353,10 +350,10 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
   PSPplot <- PSPplot[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
   PSPclimData <- PSPclimData[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
 
-  #might as well drop species with no biomass match
+  ## might as well drop species with no biomass match
 
-  #length(PSPclimData)/length(PSP_sa) should always yield a whole number.
-  #Filter data by study period
+  ## `length(PSPclimData)/length(PSP_sa)` should always yield a whole number.
+  ## Filter data by study period
   message(yellow("Filtering by study period..."))
   PSPmeasure <- PSPmeasure[MeasureYear > min(PSPperiod) &
                              MeasureYear < max(PSPperiod),]
@@ -364,14 +361,14 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
                        MeasureYear < max(PSPperiod),]
   PSPclimData[Year > min(PSPperiod) & Year < max(PSPperiod),]
 
-  #Join data (should be small enough by now)
+  ## Join data (should be small enough by now)
   PSPmeasure <- PSPmeasure[PSPplot, on = c('MeasureID', 'OrigPlotID1', 'MeasureYear')]
 
-  #Restrict to trees > minDBH
+  ## Restrict to trees > minDBH
   message(yellow("Filtering by min. DBH"))
   PSPmeasure <- PSPmeasure[DBH >= minDBH,]
 
-  #Filter by > minTrees at first measurement (P) to ensure forest. Default 30
+  ## Filter by > minTrees at first measurement (P) to ensure forest. Default 30
   message(yellow("Filtering by minimum trees in earliest measurement"))
   forestPlots <- PSPmeasure[MeasureYear == baseYear, .(measures = .N), OrigPlotID1] %>%
     .[measures >= minTrees,]
@@ -380,7 +377,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
   repeats <- PSPplot[, .(measures = .N), by = OrigPlotID1]
   message(yellow(paste0("There are "), nrow(repeats), " PSPs with min.", minTrees, " trees at earliest measurement"))
 
-  #Filter by min size
+  ## Filter by min size
   message(yellow("Filtering by min. plot size"))
   bigEnough <- PSPplot[PlotSize > minSize, .N, .(OrigPlotID1)]
   PSPplot <- PSPplot[OrigPlotID1 %in% bigEnough$OrigPlotID1]
@@ -396,7 +393,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
                                   height = PSPmeasureHeight$Height,
                                   includeHeight = TRUE,
                                   equationSource = biomassModel)
-    #check if height is missing, join if so -- function fails if data.table is empty
+    ## check if height is missing, join if so -- function fails if data.table is empty
     if (nrow(PSPmeasureNoHeight) > 0) {
       tempOutNoHeight <- biomassCalculation(species = PSPmeasureNoHeight$newSpeciesName,
                                             DBH = PSPmeasureNoHeight$DBH,
@@ -421,10 +418,10 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
   message(yellow("No biomass estimate possible for these species: "))
   print(tempOut$missedSpecies)
 
-  #Filter by 3+ repeat measures - must be last filter criteria.
-  #Some plots share ID but have different trees so simple count of plots insufficient to find repeat measures
-  #Reduce PSPmeasure to MeasureID, PlotID1, PlotID2, MeasureYear, remove duplicates
-  # then find repeat measures of MeasureYear, match back to MeasureID in both PSPplot and PSPmeasure.
+  ## Filter by 3+ repeat measures - must be last filter criteria.
+  ## Some plots share ID but have different trees so simple count of plots insufficient to find repeat measures
+  ## Reduce PSPmeasure to MeasureID, PlotID1, PlotID2, MeasureYear, remove duplicates
+  ## then find repeat measures of MeasureYear, match back to MeasureID in both PSPplot and PSPmeasure.
   message(yellow("Filtering by at least 3 repeat measures per plot"))
   repeats <- PSPmeasure[, .(MeasureID, OrigPlotID1, MeasureYear)] %>%
     .[!duplicated(.)] %>%
@@ -433,12 +430,12 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
   setkey(repeats, OrigPlotID1)
   setkey(PSPmeasure, OrigPlotID1)
   PSPmeasure <- PSPmeasure[repeats]
-  PSPplot <- PSPplot[MeasureID %in% PSPmeasure$MeasureID] #this ensures all plots have biomass/repeat measures
+  PSPplot <- PSPplot[MeasureID %in% PSPmeasure$MeasureID] ## ensures all plots have biomass/repeat measures
 
   message(yellow(paste0("There are "), nrow(repeats), " PSPs with min. 3 repeat measures"))
 
   climate <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .("CMI" = mean(CMI), "MAT" = mean(MAT)), OrigPlotID1]
-  #not all PSP plots exist in PSPclimData - this must be fixed - July 2020 IE
+  ## not all PSP plots exist in PSPclimData - this must be fixed - July 2020 IE
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% climate$OrigPlotID1,]
   PSPplot <- PSPplot[climate, on = "OrigPlotID1"]
 
@@ -454,14 +451,14 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
   PSPmodelData$species <- factor(PSPmodelData$species)
   PSPmodelData$sppLong <- factor(PSPmodelData$sppLong)
 
-  #Standardize by plotSize and change units from kg/ha to g/m2. = *1000 g/kg / 10000 m2/ha
+  ## Standardize by plotSize and change units from kg/ha to g/m2. = *1000 g/kg / 10000 m2/ha
   PSPmodelData <- PSPmodelData[, growth_gm2 := growth/plotSize/10] %>%
     .[, mortality_gm2 := mortality/plotSize/10] %>%
     .[, netBiomass_gm2 := netBiomass/plotSize/10]
-  #26/02/2019 after discussion we decided not to include species in model.
-  # Decided to parameterize inclusion of ATA or year. ATA is better for projecting, but year is canonical
-  # Sum species-specific mortality, growth, and net biomass by plot and year
-  # growth is set to 0.1 if it would be 0 (to avoid model error-  0 growth is caused by measurement error)
+  ## NOTE: 26/02/2019 after discussion we decided not to include species in model.
+  ## Decided to parameterize inclusion of ATA or year. ATA is better for projecting, but year is canonical
+  ## Sum species-specific mortality, growth, and net biomass by plot and year
+  ## growth is set to 0.1 if it would be 0 (to avoid model error-  0 growth is caused by measurement error)
   PSPmodelData <- PSPmodelData[, .("growth" = pmax(1, sum(growth_gm2)), "mortality" = sum(mortality_gm2),
                                    "netBiomass" = sum(netBiomass_gm2), "biomass" = sum(biomass),
                                    'CMI' = mean(CMI), 'CMIA' = mean(CMIA),
@@ -476,33 +473,32 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
 gmcsModelBuild <- function(PSPmodelData, model) {
 
   assign("PSPmodelData", PSPmodelData, globalenv())
-  #this prevents cache envir arg from conflicting with eval envir
+  ## this prevents cache envir arg from conflicting with eval envir
   gmcsModel <- eval(model, envir = environment())
 
   return(gmcsModel)
 }
 
 getCurrentClimate <- function(climStack, time, isATA = FALSE) {
-
   yearRas <- climStack[[grep(pattern = time, x = names(climStack))]]
   if (is.null(yearRas)) { stop("error with naming of climate raster stack")}
   yearRas <- raster::readAll(yearRas)
-  #TODO: the CMI layer is being written to the temp drive... ATA is not because of value change
+  ## TODO: the CMI layer is being written to the temp drive... ATA is not because of value change
 
   if (isATA == TRUE) {
-    #ATA was stored as an integer AND as tenth of a degree. Data uses degrees, so divide by ten
-    #ClimateNA point data (used for historical PSP climate) is output as degrees, so this discrepancy must be corrected
-    #better to explicitly do it here than implicitly in the input data
+    ## ATA was stored as an integer AND as tenth of a degree. Data uses degrees, so divide by ten
+    ## ClimateNA point data (used for historical PSP climate) is output as degrees, so this discrepancy must be corrected
+    ## better to explicitly do it here than implicitly in the input data
     yearRas[] <- yearRas[] / 10 #scale to degrees to make comparable with model data
   }
   return(yearRas)
 }
 
 pspIntervals <- function(i, M, P, Clim) {
-  #Calculate climate variables
-  #TODO: this should take the mean of whatever variable over the study period
-  #the anomaly can be calculated outside the function - this would support other climate variables
-  #ACMI and ATA were added individually in separate model
+  ## Calculate climate variables
+  ## TODO: this should take the mean of whatever variable over the study period
+  ## the anomaly can be calculated outside the function - this would support other climate variables
+  ## ACMI and ATA were added individually in separate model
   CMI <- mean(Clim$CMI[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]])
   ACMI <- mean(Clim$CMI[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]]) - P$CMI[1]
   ATA <- mean(Clim$MAT[Clim$Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1]]) - P$MAT[1]
@@ -520,11 +516,11 @@ pspIntervals <- function(i, M, P, Clim) {
 
   if (nrow(living1) != nrow(living2) | nrow(living1) == 0) {
     warning("there is a problem in the PSP data with the plots: ", unique(m1$MeasureID), " ", unique(m2$MeasureID))
-    #nrow(living1) == 0 will happen if tree numbers change between measurements
+    ## `nrow(living1) == 0` will happen if tree numbers change between measurements
   }
-  #Find observed annual changes in mortality and growth
+  ## Find observed annual changes in mortality and growth
   living2$origBiomass <- living1$biomass
-  #growth cannot be negative, by definition
+  ## growth cannot be negative, by definition
   living2[biomass < origBiomass, biomass := origBiomass]
 
   living <- living2[, .(newGrowth =  sum(biomass - origBiomass)/censusLength,
