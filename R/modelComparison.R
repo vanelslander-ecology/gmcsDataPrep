@@ -1,5 +1,4 @@
 compareModels <- function(nullGrowth, nullMortality, gcs, mcs, validationData, doPlotting, path) {
-
   gcsNLL <- assessNLL(validationData = validationData, gmModel = gcs,
                       observedCol = "growth", plotCol = "climate-sensitive",
                       doPlotting = doPlotting, path = path)
@@ -35,7 +34,6 @@ assessNLL <- function(validationData, observedCol, gmModel, plotCol, doPlotting,
       geom_abline(slope = 1)
 
     ggsave(a, filename = file.path(path, paste(plotCol, observedCol, "ggplot.png", sep = "_")))
-
   }
   # stdev <- sd(validationData$predictionVar - validationData$observed)
   stdev <- sd(validationData$observed)
