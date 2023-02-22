@@ -173,8 +173,7 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
         sim <- checkRasters(sim)
         sim <- scheduleEvent(sim, start(sim), eventType = "prepRasters", eventPriority = 1)
       }
-      # sim <- scheduleEvent(sim, end(sim), eventType = "scrubGlobalEnv", eventPriority = 9)
-
+      sim <- scheduleEvent(sim, end(sim), eventType = "scrubGlobalEnv", eventPriority = .last())
     },
     prepRasters = {
       if (time(sim) < P(sim)$yearOfFirstClimateImpact) {
@@ -199,11 +198,9 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 
       sim <- scheduleEvent(sim, time(sim) + 1, eventType = "prepRasters", eventPriority = 1)
     },
-
     scrubGlobalEnv = {
       on.exit(rm(PSPmodelData, envir = globalenv()), add = TRUE)
     },
-
     warning(paste("Undefined event type: '", current(sim)[1, "eventType", with = FALSE],
                   "' in module '", current(sim)[1, "moduleName", with = FALSE], "'", sep = ""))
   )
@@ -301,6 +298,7 @@ Init <- function(sim) {
 
     ## reporting NLL as comparison statistic - could do RME or MAE?
     if (nrow(sim$PSPvalidationData) > 0) {
+      assign("PSPmodelData", sim$PSPmodelData, .GlobalEnv)
       compareModels(nullGrowth = sim$nullGrowthModel,
                     nullMortality = sim$nullMortalityModel,
                     gcs = sim$gcsModel,
@@ -308,6 +306,7 @@ Init <- function(sim) {
                     validationData = sim$PSPvalidationData,
                     doPlotting = P(sim)$doPlotting,
                     path = outputPath(sim))
+      # rm(PSPmodelData, envir = .GlobalEnv) ## TODO
     }
   }
 
@@ -471,8 +470,7 @@ prepModelData <- function(studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData
 }
 
 gmcsModelBuild <- function(PSPmodelData, model) {
-
-  assign("PSPmodelData", PSPmodelData, globalenv())
+  assign("PSPmodelData", PSPmodelData, .GlobalEnv)
   ## this prevents cache envir arg from conflicting with eval envir
   gmcsModel <- eval(model, envir = environment())
 
