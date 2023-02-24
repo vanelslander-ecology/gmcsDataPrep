@@ -18,16 +18,12 @@ defineModule(sim, list(
                   "ianmseddy/LandR.CS@development (>= 0.0.3.9000)",
                   "MASS", "nlme",
                   "PredictiveEcology/pemisc@development (>= 0.0.3.9002)",
-                  "ianmseddy/PSPclean@development (>= 0.1.3.9002)",
-                  "sf", "sp", "raster"),
+                  "ianmseddy/PSPclean@development (>= 0.1.3.9002)", "sf"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("biomassModel", "character", "Lambert2005", NA, NA,
                     desc =  paste("The model used to calculate biomass from DBH.",
                                   "Can be either 'Lambert2005' or 'Ung2008'.")),
-    defineParameter("cacheClimateRas", "logical", TRUE, NA, NA,
-                    desc = paste("should reprojection of climate rasters be cached every year?",
-                                 "This will result in potentially > 100 rasters being cached")),
     defineParameter("climateVariables", "character", c("ATA" = "MAT", "CMI"), NA, NA,
                     desc = paste("character vector of climate variables from ClimateNA used in the growth/mortality models.",
                                  "If a model uses a variable formula that represents a deviation from a climate normal,",
@@ -76,8 +72,6 @@ defineModule(sim, list(
                     quote(nlme::lme(mortality ~ logAge, random = ~1 | OrigPlotID1,
                                     weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)), NA, NA,
                     desc = "a null model used only for comparative purposes - can be accessed through 'mod'"),
-    defineParameter("prepClimateLayers", "logical", TRUE,
-                    desc = "schedule annual retrieval of climate layers when running simulation"),
     defineParameter("PSPab_damageColsToExclude", "numeric",3, NA, NA,
                     desc = paste("if sourcing Alberta PSP, which tree damage sources to exclude, if any.",
                                  "Defaults to Mountain Pine Beetle. Codes can be found in GOA PSP Manual.",
@@ -110,10 +104,6 @@ defineModule(sim, list(
                                  "trees, then only DBH will be used for those measurements")),
     defineParameter("validationProportion", "numeric", 0.20, 0, 1,
                     desc = "proportion of data to use in validation set. Will be overridden by PSPvalidationPeriod"),
-    defineParameter("yearOfFirstClimateImpact", 'numeric', 2011, NA, NA,
-                    desc = paste("the first year for which to calculate climate impacts")),
-    defineParameter(".studyAreaName", "character", NA, NA, NA,
-                    "Human-readable name for the study area used. If NA, a hash of studyArea will be used."),
     defineParameter(".useCache", "character", ".inputObjects", NA, NA,
                     desc = paste("Should this entire module be run with caching activated?",
                                  "This is generally intended for data-type modules,",
@@ -121,12 +111,6 @@ defineModule(sim, list(
   ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
-    expectsInput(objectName = "ATAstack", objectClass = "RasterStack",
-                 desc = "annual projected mean annual temperature anomalies, units stored as tenth of a degree"),
-    expectsInput(objectName = "CMIstack", objectClass = "RasterStack",
-                 desc = "annual projected mean climate moisture deficit"),
-    expectsInput(objectName = "CMInormal", objectClass = "RasterLayer",
-                 desc = "Climate Moisture Index Normals from 1950-2010"),
     expectsInput(objectName = "PSPmeasure_gmcs", objectClass = "data.table", desc = "standardized tree measurements for PSPs",
                  sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/"),
     expectsInput(objectName = "PSPplot_gmcs", objectClass = "data.table", desc = "standardized plot-level attributes for PSPs",
@@ -137,28 +121,16 @@ defineModule(sim, list(
                  desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA with csv",
                               "Temp is represented as degrees, not tenth of degrees as with the raster data"),
                  sourceURL = "https://drive.google.com/file/d/17RrqiepZaGp9bVPkwWEQa0Nu4aQxRL8s/view?usp=share_link"),
-    expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer",
-                 desc = "template raster for ATA and CMI"),
-    expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame",
-                 desc = "this area will be used to crop climate rasters", sourceURL = NA),
     expectsInput(objectName = "studyAreaPSP", objectClass = "SpatialPolygonsDataFrame",
                  desc = paste("this area will be used to subset PSP plots before building the statistical model.",
                               "Currently PSP datasets with repeat measures exist only for Saskatchewan,",
                               "Alberta, Boreal British Columbia, and Ontario"), sourceURL = NA)
   ),
   outputObjects = bindrows(
-    createsOutput(objectName = "ATA", objectClass = "RasterLayer",
-                  desc = "annual temperature anomaly, resampled using `rasterToMatch`"),
-    createsOutput(objectName = "ATAstack", objectClass = "RasterStack",
-                  desc = "annual projected mean annual temperature anomalies, units stored as tenth of a degree"),
-    createsOutput(objectName = "CMI", objectClass = "RasterLayer",
-                  desc = "climate moisture deficit at `time(sim)`, resampled using `rasterToMatch`"),
-    createsOutput(objectName = "CMIstack", objectClass = "RasterStack",
-                  desc = "annual projected mean climate moisture deficit"),
     createsOutput(objectName = "gcsModel", objectClass = "ModelObject?",
-                  desc = "growth mixed effect model with normalized log(age), ATA, and CMI as predictors"),
+                  desc = "growth model with covariates indicated by P(sim)$climateVariables and log(age)"),
     createsOutput(objectName = "mcsModel", objectClass = "ModelObject?",
-                  desc = "mortality mixed effect model with normalized log(age), ATA, and CMI as predictors"),
+                  desc = "mortality model with covariates indicated by P(sim)$climateVariables and log(age)"),
     createsOutput(objectName = "PSPmodelData", objectClass = "data.table",
                   desc = "PSP growth mortality calculations"),
     createsOutput(objectName = "PSPvalidationData", objectClass = "data.table",
@@ -176,34 +148,7 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
       # do stuff for this event
       sim <- Init(sim)
 
-      if (P(sim)$prepClimateLayers) {
-        sim <- checkRasters(sim)
-        sim <- scheduleEvent(sim, start(sim), eventType = "prepRasters", eventPriority = 1)
-      }
       sim <- scheduleEvent(sim, end(sim), eventType = "scrubGlobalEnv", eventPriority = .last())
-    },
-    prepRasters = {
-      if (time(sim) < P(sim)$yearOfFirstClimateImpact) {
-        sim$ATA <- sim$rasterToMatch #replace with a raster with no climate anomaly
-        sim$ATA[!is.na(sim$ATA)] <- 0
-        sim$CMI <- sim$CMInormal #replace with a raster with no climate anomaly
-      } else {
-        #check if current time is later than projected years
-        if (time(sim) - start(sim) <= raster::nlayers(sim$ATAstack) - 1) {
-          #-1 because start(sim) is a layer
-          timeToUse <- time(sim)
-        } else {
-          #the simulation time must be later than the projected climate, e.g. 2102 - 2011 > 90 years of projected annual climate
-          availableYears <- P(sim)$yearOfFirstClimateImpact + 1:raster::nlayers(sim$ATAstack) - 1
-          cutoff <- quantile(availableYears, probs = P(sim)$stableClimateQuantile)
-          timeToUse <- sample(availableYears[availableYears >= cutoff], size = 1)
-          message("simulation time has surpassed climate layers - using ", timeToUse, " for year ", time(sim))
-        }
-        sim$ATA <- getCurrentClimate(climStack = sim$ATAstack, time = timeToUse, isATA = TRUE)
-        sim$CMI <- getCurrentClimate(climStack = sim$CMIstack, time = timeToUse)
-      }
-
-      sim <- scheduleEvent(sim, time(sim) + 1, eventType = "prepRasters", eventPriority = 1)
     },
     scrubGlobalEnv = {
       on.exit(rm(PSPmodelData, envir = globalenv()), add = TRUE)
@@ -293,16 +238,16 @@ Init <- function(sim) {
                             userTags = c("mcsModel"))
     }
     # if (is.null(sim$nullGrowthModel)) {
-      mod$nullGrowthModel <- Cache(gmcsModelBuild,
-                                   PSPmodelData = sim$PSPmodelData,
-                                   model = P(sim)$nullMortalityModel,
-                                   userTags = c("nullGrowthModel"))
+    mod$nullGrowthModel <- Cache(gmcsModelBuild,
+                                 PSPmodelData = sim$PSPmodelData,
+                                 model = P(sim)$nullMortalityModel,
+                                 userTags = c("nullGrowthModel"))
     # }
     # if (is.null(sim$nullMortalityModel)) {
-      mod$nullMortalityModel <- Cache(gmcsModelBuild,
-                                      PSPmodelData = sim$PSPmodelData,
-                                      model = P(sim)$nullMortalityModel,
-                                      userTags = c("nullMortalityModel"))
+    mod$nullMortalityModel <- Cache(gmcsModelBuild,
+                                    PSPmodelData = sim$PSPmodelData,
+                                    model = P(sim)$nullMortalityModel,
+                                    userTags = c("nullMortalityModel"))
     # }
 
     ## reporting NLL as comparison statistic - could do RME or MAE?
@@ -325,18 +270,7 @@ Init <- function(sim) {
   return(invisible(sim))
 }
 
-checkRasters <- function(sim){
-  if (!compareRaster(sim$ATAstack, sim$rasterToMatch, stopiffalse = FALSE)) {
-    ## must postProcess the rasters as a stack with terra
-    sim$ATAstack <- Cache(postProcess, sim$ATAstack, rasterToMatch = sim$rasterToMatch,
-                          studyArea = sim$studyArea, userTags = c("postProcess", "ATAstack"))
-  }
-  if (!compareRaster(sim$CMIstack, sim$rasterToMatch, stopiffalse = FALSE)) {
-    sim$CMIstack <- Cache(postProcess, sim$CMIstack, rasterToMatch = sim$rasterToMatch,
-                          studyArea = sim$studyArea, userTags = c("postProcess", "CMIstack"))
-  }
-  return(sim)
-}
+
 
 prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData, useHeight,
                           biomassModel, PSPperiod, minDBH, minSize, minTrees) {
@@ -514,25 +448,6 @@ gmcsModelBuild <- function(PSPmodelData, model) {
   return(gmcsModel)
 }
 
-getCurrentClimate <- function(climStack, time, isATA = FALSE) {
-  yearRas <- climStack[[grep(pattern = time, x = names(climStack))]]
-  if (is.null(yearRas)) {
-    stop("error with naming of climate raster stack")
-  }
-  if (!raster::inMemory(yearRas)) {
-    yearRas <- raster::readAll(yearRas)
-  }
-  ## TODO: the CMI layer is being written to the temp drive... ATA is not because of value change
-
-  if (isATA == TRUE) {
-    ## ATA was stored as an integer AND as tenth of a degree. Data uses degrees, so divide by ten
-    ## ClimateNA point data (used for historical PSP climate) is output as degrees, so this discrepancy must be corrected
-    ## better to explicitly do it here than implicitly in the input data
-    yearRas[] <- yearRas[] / 10 #scale to degrees to make comparable with model data
-  }
-  return(yearRas)
-}
-
 pspIntervals <- function(i, M, P, Clim, ClimVar) {
   #Calculate climate variables
   meanClim <- Clim[Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1],
@@ -701,7 +616,7 @@ sumPeriod <- function(x, m, p, clim, climVar) {
                                                   plotMeasure = PSPab$pspABplotMeasure,
                                                   tree = PSPab$pspABtree,
                                                   plot = PSPab$pspABplot,
-                                                    codesToExclude = P(sim)$PSPab_damageColsToExclude)
+                                                  codesToExclude = P(sim)$PSPab_damageColsToExclude)
         PSPmeasure_gmcs[["AB"]] <- PSPab$treeData
         PSPplot_gmcs[["AB"]] <- PSPab$plotHeaderData
       }
@@ -772,89 +687,6 @@ sumPeriod <- function(x, m, p, clim, climVar) {
     setnames(sim$PSPclimData, old = c("id1", "id2"), new = c("OrigPlotID1", "OrigPlotID2"))
 
     sim$PSPclimData <- sim$PSPclimData[MAT != -9999] #missing plots get -9999 as variable
-  }
-
-  if (!suppliedElsewhere("rasterToMatch", sim)) {
-    message("rasterToMatch not supplied. Generating from LCC2005")
-    sim$rasterToMatch <- prepInputsLCC(studyArea = sim$studyArea, filename2 = NULL, destinationPath = dPath)
-  }
-
-  if (P(sim)$prepClimateLayers) {
-    if (!suppliedElsewhere("ATAstack", sim)) {
-      ## These should not be called using rasterToMatch (stack, memory)
-      if (P(sim)$GCM == "CCSM4_RCP4.5") {
-        ata.url <- "https://drive.google.com/open?id=1sGRp0zNjlQUg6LXpEgG4anT2wx1jvuUQ"
-        ata.tf <- "Can3ArcMinute_CCSM4_RCP45_ATA2011-2100.grd"
-        ata.arc <- "Canada3ArcMinute_CCSM4_45_ATA2011-2100.zip"
-      } else if (P(sim)$GCM == "CanESM2_RCP4.5") {
-        ata.url <- "https://drive.google.com/open?id=1d8wy70gxDcO2MKsQt7tYBpryKudE-99h"
-        ata.tf <- "Can3ArcMinute_CanESM2_RCP45_ATA2011-2100.grd"
-        ata.arc <- "Canada3ArcMinute_ATA2011-2100.zip"
-      } else if (P(sim)$GCM == "CCSM4_RCP8.5") {
-        ata.url <- "https://drive.google.com/open?id=1_LXyPRdWbUj_Kk3ab-bgjqDXcowg_lpM"
-        ata.tf <- "Can3ArcMinute_CCSM4_RCP85_ATA2011-2100.grd"
-        ata.arc <- "Canada3ArcMinute_CCSM4_85_ATA2011-2100.zip"
-      } else {
-        stop("unrecognized GCM in P(sim)$GCM")
-      }
-
-      sim$ATAstack <- prepInputs(targetFile = ata.tf,
-                                 archive = ata.arc,
-                                 alsoExtract = "similar",
-                                 url = ata.url,
-                                 destinationPath = dPath,
-                                 studyArea = sim$studyArea,
-                                 rasterToMatch = sim$rasterToMatch,
-                                 fun = "raster::stack",
-                                 useCache = TRUE,
-                                 userTags = c(currentModule(sim), "ATAstack"))
-      #if a pixel is 10 degrees above average, needs 4S
-    }
-
-    ## TODO: call canClimateData directly
-    if (!suppliedElsewhere("CMIstack", sim)) {
-      if (P(sim)$GCM == "CCSM4_RCP4.5") {
-        cmi.url <- "https://drive.google.com/open?id=1ERoQmCuQp3_iffQ0kXN7SCQr07M7dawv"
-        cmi.tf <- "Canada3ArcMinute_CCSM4_45_CMI2011-2100.grd"
-        cmi.arc <- "Canada3ArcMinute_CCSM4_45_CMI2011-2100.zip"
-      } else if (P(sim)$GCM == "CanESM2_RCP4.5") {
-        cmi.url <- "https://drive.google.com/open?id=1MwhK3eD1W6u0AgFbRgVg7j-qqyk0-3yA"
-        cmi.tf <- "Canada3ArcMinute_CMI2011-2100.grd"
-        cmi.arc <- "Canada3ArcMinute_CMI2011-2100.zip"
-      } else if (P(sim)$GCM == "CCSM4_RCP8.5") {
-        cmi.url <- "https://drive.google.com/open?id=1OcVsAQXKO4N4ZIESNmIZAI9IZcutctHX"
-        cmi.tf <- "Canada3ArcMinute_CCSM4_85_CMI2011-2100.grd"
-        cmi.arc <- "Canada3ArcMinute_CCSM4_85_CMI2011-2100.zip"
-      } else {
-        stop("unrecognized GCM in P(sim)$GCM")
-      }
-
-      sim$CMIstack <- prepInputs(targetFile = cmi.tf,
-                                 archive = cmi.arc,
-                                 alsoExtract = "similar",
-                                 url = cmi.url,
-                                 destinationPath = dPath,
-                                 rasterTomatch = sim$rasterToMatch,
-                                 studyArea = sim$studyArea,
-                                 fun = "raster::stack",
-                                 useCache = TRUE,
-                                 userTags = c(currentModule(sim), "CMIstack"))
-    }
-
-    if (!suppliedElsewhere("CMInormal", sim)) {
-      sim$CMInormal <- prepInputs(targetFile = "Canada3ArcMinute_normalCMI.grd",
-                                  archive = "Canada3ArcMinute_normalCMI.zip",
-                                  url = "https://drive.google.com/open?id=16YMgx9t2eW8-fT5YyW0xEbjKODYNCiys",
-                                  destinationPath = dPath,
-                                  fun = "raster::raster",
-                                  studyArea = sim$studyArea,
-                                  rasterToMatch = sim$rasterToMatch,
-                                  useCache = TRUE,
-                                  overwrite = TRUE,
-                                  userTags = c(currentModule(sim), "CMInormal"),
-                                  method = "bilinear",
-                                  alsoExtract = "Canada3ArcMinute_normalCMI.gri")
-    }
   }
 
   return(invisible(sim))
