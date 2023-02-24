@@ -1,13 +1,17 @@
-compareModels <- function(nullGrowth, nullMortality, gcs, mcs, validationData, doPlotting, path) {
+compareModels <- function(nullGrowth, nullMortality, gcs, mcs, validationData, doPlotting, path, studyAreaName) {
   gcsNLL <- assessNLL(validationData = validationData, gmModel = gcs,
                       observedCol = "growth", plotCol = "climate-sensitive",
-                      doPlotting = doPlotting, path = path)
+                      doPlotting = doPlotting, path = path,
+                      studyAreaName = studyAreaName)
   nullGrowthNLL <- assessNLL(validationData = validationData, gmModel = nullGrowth,
-                             observedCol = "growth", plotCol = "null", doPlotting, path)
+                             observedCol = "growth", plotCol = "null", doPlotting, path,
+                             studyAreaName = studyAreaName)
   mcsNLL <- assessNLL(validationData = validationData, gmModel = mcs,
-                      observedCol = "mortality", plotCol = "climate-sensitive", doPlotting, path)
+                      observedCol = "mortality", plotCol = "climate-sensitive", doPlotting, path,
+                      studyAreaName = studyAreaName)
   nullMortalityNLL <- assessNLL(validationData = validationData, gmModel = nullMortality,
-                                observedCol = "mortality", plotCol = "null", doPlotting, path)
+                                observedCol = "mortality", plotCol = "null", doPlotting, path,
+                                studyAreaName = studyAreaName)
 
   message("negative log likelihood of climate-sensitive growth model: ", gcsNLL)
   message("negative log likelihood of null growth model: ", nullGrowthNLL)
@@ -21,7 +25,7 @@ compareModels <- function(nullGrowth, nullMortality, gcs, mcs, validationData, d
   }
 }
 
-assessNLL <- function(validationData, observedCol, gmModel, plotCol, doPlotting, path) {
+assessNLL <- function(validationData, observedCol, gmModel, plotCol, doPlotting, path, studyAreaName) {
   #not sure if we should keep the prediction col in the dataset...
   validationData <- copy(validationData)
   validationData[, predictionVar := predict(gmModel, newdata = validationData, type = "response")]
@@ -33,7 +37,9 @@ assessNLL <- function(validationData, observedCol, gmModel, plotCol, doPlotting,
       scale_colour_continuous(type = "viridis") +
       geom_abline(slope = 1)
 
-    ggsave(a, filename = file.path(path, paste(plotCol, observedCol, "ggplot.png", sep = "_")))
+    ggsave(a, filename = file.path(path, "figures",
+                                   paste("gmcsDataPrep", studyAreaName,
+                                         plotCol, observedCol, "ggplot.png", sep = "_")))
   }
   # stdev <- sd(validationData$predictionVar - validationData$observed)
   stdev <- sd(validationData$observed)

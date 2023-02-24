@@ -71,11 +71,11 @@ defineModule(sim, list(
                     quote(glmmPQL(growth ~ logAge, random = ~1 | OrigPlotID1,
                                   weights = scale(PSPmodelData$plotSize^0.5 * PSPmodelData$periodLength, center = FALSE),
                                   data = PSPmodelData, family = "Gamma"(link = "log"))), NA, NA,
-                    desc = "a null model used only for comparative purposes"),
+                    desc = "a null model used only for comparative purposes - can be accessed through 'mod'"),
     defineParameter("nullMortalityModel", class = "call",
                     quote(nlme::lme(mortality ~ logAge, random = ~1 | OrigPlotID1,
                                     weights = varFunc(~plotSize^0.5 * periodLength), data = PSPmodelData)), NA, NA,
-                    desc = "a null model used only for comparative purposes"),
+                    desc = "a null model used only for comparative purposes - can be accessed through 'mod'"),
     defineParameter("prepClimateLayers", "logical", TRUE,
                     desc = "schedule annual retrieval of climate layers when running simulation"),
     defineParameter("PSPab_damageColsToExclude", "numeric",3, NA, NA,
@@ -112,6 +112,8 @@ defineModule(sim, list(
                     desc = "proportion of data to use in validation set. Will be overridden by PSPvalidationPeriod"),
     defineParameter("yearOfFirstClimateImpact", 'numeric', 2011, NA, NA,
                     desc = paste("the first year for which to calculate climate impacts")),
+    defineParameter(".studyAreaName", "character", NA, NA, NA,
+                    "Human-readable name for the study area used. If NA, a hash of studyArea will be used."),
     defineParameter(".useCache", "character", ".inputObjects", NA, NA,
                     desc = paste("Should this entire module be run with caching activated?",
                                  "This is generally intended for data-type modules,",
@@ -290,29 +292,32 @@ Init <- function(sim) {
                             model = P(sim)$mortalityModel,
                             userTags = c("mcsModel"))
     }
-    if (is.null(sim$nullGrowthModel)) {
-      sim$nullGrowthModel <- Cache(gmcsModelBuild,
+    # if (is.null(sim$nullGrowthModel)) {
+      mod$nullGrowthModel <- Cache(gmcsModelBuild,
                                    PSPmodelData = sim$PSPmodelData,
                                    model = P(sim)$nullMortalityModel,
                                    userTags = c("nullGrowthModel"))
-    }
-    if (is.null(sim$nullMortalityModel)) {
-      sim$nullMortalityModel <- Cache(gmcsModelBuild,
+    # }
+    # if (is.null(sim$nullMortalityModel)) {
+      mod$nullMortalityModel <- Cache(gmcsModelBuild,
                                       PSPmodelData = sim$PSPmodelData,
                                       model = P(sim)$nullMortalityModel,
                                       userTags = c("nullMortalityModel"))
-    }
+    # }
 
     ## reporting NLL as comparison statistic - could do RME or MAE?
     if (nrow(sim$PSPvalidationData) > 0) {
-      assign("PSPmodelData", sim$PSPmodelData, .GlobalEnv)
-      compareModels(nullGrowth = sim$nullGrowthModel,
-                    nullMortality = sim$nullMortalityModel,
+      assign("PSPmodelData", sim$PSPmodelData, .GlobalEnv) ## needed until end of sim
+      ## TODO: use more specific name to avoid clobbering user's global env objs
+      ## E.g., `._tmp_gmcsDataPrep_PSPmodelData_.`
+      compareModels(nullGrowth = mod$nullGrowthModel,
+                    nullMortality = mod$nullMortalityModel,
                     gcs = sim$gcsModel,
                     mcs = sim$mcsModel,
                     validationData = sim$PSPvalidationData,
                     doPlotting = P(sim)$doPlotting,
-                    path = outputPath(sim))
+                    path = outputPath(sim),
+                    studyAreaName = P(sim)$.studyAreaName)
       # rm(PSPmodelData, envir = .GlobalEnv) ## TODO
     }
   }
@@ -511,8 +516,12 @@ gmcsModelBuild <- function(PSPmodelData, model) {
 
 getCurrentClimate <- function(climStack, time, isATA = FALSE) {
   yearRas <- climStack[[grep(pattern = time, x = names(climStack))]]
-  if (is.null(yearRas)) { stop("error with naming of climate raster stack")}
-  yearRas <- raster::readAll(yearRas)
+  if (is.null(yearRas)) {
+    stop("error with naming of climate raster stack")
+  }
+  if (!raster::inMemory(yearRas)) {
+    yearRas <- raster::readAll(yearRas)
+  }
   ## TODO: the CMI layer is being written to the temp drive... ATA is not because of value change
 
   if (isATA == TRUE) {
@@ -583,7 +592,6 @@ pspIntervals <- function(i, M, P, Clim, ClimVar) {
   # totalG <- UnobservedM + observedGrowth
 
   changes <- bind(newborn, living)
-
 
   changes$mortality <- 0
   dead$newGrowth <- 0
@@ -686,6 +694,7 @@ sumPeriod <- function(x, m, p, clim, climVar) {
         PSPmeasure_gmcs[["BC"]] <- PSPbc$treeData
         PSPplot_gmcs[["BC"]] <- PSPbc$plotHeaderData
       }
+
       if ("AB" %in% P(sim)$PSPdataTypes | "all" %in% P(sim)$PSPdataTypes) {
         PSPab <- prepInputsAlbertaPSP(dPath = dPath)
         PSPab <- PSPclean::dataPurification_ABPSP(treeMeasure = PSPab$pspABtreeMeasure,
@@ -769,10 +778,10 @@ sumPeriod <- function(x, m, p, clim, climVar) {
     message("rasterToMatch not supplied. Generating from LCC2005")
     sim$rasterToMatch <- prepInputsLCC(studyArea = sim$studyArea, filename2 = NULL, destinationPath = dPath)
   }
+
   if (P(sim)$prepClimateLayers) {
     if (!suppliedElsewhere("ATAstack", sim)) {
-
-      #These should not be called using rasterToMatch (stack, memory)
+      ## These should not be called using rasterToMatch (stack, memory)
       if (P(sim)$GCM == "CCSM4_RCP4.5") {
         ata.url <- "https://drive.google.com/open?id=1sGRp0zNjlQUg6LXpEgG4anT2wx1jvuUQ"
         ata.tf <- "Can3ArcMinute_CCSM4_RCP45_ATA2011-2100.grd"
@@ -802,9 +811,8 @@ sumPeriod <- function(x, m, p, clim, climVar) {
       #if a pixel is 10 degrees above average, needs 4S
     }
 
-
+    ## TODO: call canClimateData directly
     if (!suppliedElsewhere("CMIstack", sim)) {
-
       if (P(sim)$GCM == "CCSM4_RCP4.5") {
         cmi.url <- "https://drive.google.com/open?id=1ERoQmCuQp3_iffQ0kXN7SCQr07M7dawv"
         cmi.tf <- "Canada3ArcMinute_CCSM4_45_CMI2011-2100.grd"
@@ -831,7 +839,6 @@ sumPeriod <- function(x, m, p, clim, climVar) {
                                  fun = "raster::stack",
                                  useCache = TRUE,
                                  userTags = c(currentModule(sim), "CMIstack"))
-
     }
 
     if (!suppliedElsewhere("CMInormal", sim)) {
