@@ -480,9 +480,11 @@ gmcsModelBuild <- function(PSPmodelData, model) {
 
 getCurrentClimate <- function(climStack, time, isATA = FALSE) {
   yearRas <- climStack[[grep(pattern = time, x = names(climStack))]]
-  if (is.null(yearRas)) { stop("error with naming of climate raster stack")}
-  yearRas <- if (!raster::inMemory(yearRas)) {
-    raster::readAll(yearRas)
+  if (is.null(yearRas)) {
+    stop("error with naming of climate raster stack")
+  }
+  if (!raster::inMemory(yearRas)) {
+    yearRas <- raster::readAll(yearRas)
   }
   ## TODO: the CMI layer is being written to the temp drive... ATA is not because of value change
 
