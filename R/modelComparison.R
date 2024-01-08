@@ -37,7 +37,7 @@ assessNLL <- function(validationData, observedCol, gmModel, plotCol, doPlotting,
       scale_colour_continuous(type = "viridis") +
       geom_abline(slope = 1)
 
-    ggsave(a, filename = file.path(path, "figures",
+    ggsave(a, filename = file.path(checkPath(file.path(path, "figures"), create = TRUE),
                                    paste("gmcsDataPrep", studyAreaName,
                                          plotCol, observedCol, "ggplot.png", sep = "_")))
   }
