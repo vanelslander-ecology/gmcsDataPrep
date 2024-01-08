@@ -276,11 +276,9 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
                           biomassModel, PSPperiod, minDBH, minSize, minTrees) {
   ## crop points to studyAreaPSP
   if (!is.null(studyAreaPSP)) {
-    tempSA <- st_as_sf(studyAreaPSP) %>%
-      st_transform(tempSA, crs = crs(PSPgis))
-
     message(yellow("Filtering PSPs to study Area..."))
-    PSP_sa <- PSPgis[tempSA,]
+    #TODO: confirm this postProcess works
+    PSP_sa <- postProcess(PSPgis, maskTo = studyAreaPSP)
     message(yellow(paste0("There are "), nrow(PSP_sa), " PSPs in your study area"))
   } else {
     PSP_sa <- PSPgis
@@ -505,12 +503,11 @@ pspIntervals <- function(i, M, P, Clim, ClimVar) {
   # #assume unobserved trees died at midpoint. I think this overestimates growth and mortality
   # totalM <- UnobservedM + observedMortality
   # totalG <- UnobservedM + observedGrowth
-
-  changes <- bind(newborn, living)
+  changes <- rbind(newborn, living)
 
   changes$mortality <- 0
   dead$newGrowth <- 0
-  changes <- bind(changes, dead)
+  changes <- rbind(changes, dead, fill = TRUE)
   changes[is.na(changes)] <- 0
   changes <- changes[, .("netGrowth" = sum(newGrowth), "mortality" = sum(mortality),
                          biomass = sum(biomass, na.rm = TRUE)),
