@@ -7,62 +7,37 @@ output: pdf_document
 
 # Overview
 
-The purpose of this code is to generate the inputs to climateNA needed to produce historical climate data for each PSP plot. 
-Eventually it can be modified to use the climateNA R Package (avoiding the use of ClimateNA executable). 
-The PSP data is obtained with as few restrictions as possible on plot criteria (e.g. no filtering for MPB damage, min. DBH)
-so that the availabability of historical climate data is not a limiting factor when using these data in other modules. 
-When elevation data is not present for a given plot, it is estimated from a DEM (7.5 arc-second). This approach was determined
-to be much more accurate than running climateNA without location, by comparing climate values of plots with recorded elevation to those from the same plots with no elevation and with elevation estimated by DEM. 
+The purpose of this code is to generate the inputs to climateNA needed to produce historical climate data for each PSP plot. The PSP data should be obtained without restrictions on plot criteria (e.g. no filtering for MPB damage, min. DBH)
+so that the availability of historical climate data is not a limiting factor when using these data in other modules. 
+When elevation data is not present for a given plot, it is estimated from a DEM (7.5 arc-second). This approach was determined to be a large improvement over running climateNA with no elevation data. 
 
 
 ```{generating inputs to ClimateNA}
-library(raster)
+library(terra)
 library(sf)
 library(reproducible)
 library(PSPclean)
 library(LandR)
 
-sppEquiv <- LandR::sppEquivalencies_CA
-
-ABpsp <- prepInputsAlbertaPSP(dPath = tempdir())
-ABpsp <- dataPurification_ABPSP(treeMeasure = ABpsp$pspABtreeMeasure, plotMeasure = ABpsp$pspABplotMeasure, 
-                                tree = ABpsp$pspABtree, plot = ABpsp$pspABplot, codesToExclude = NULL)
-BCpsp <- prepInputsBCPSP(dPath = tempdir())
-BCpsp <- dataPurification_BCPSP(treeDataRaw = BCpsp$treeDataRaw, plotHeaderDataRaw = BCpsp$plotHeaderDataRaw, 
-                                damageAgentCodes = BCpsp$pspBCdamageAgentCodes, codesToExclude = NULL)
-SKpsp <- prepInputsSaskatchwanPSP(dPath = tempdir())
-SKpsp <- dataPurification_SKPSP(SADataRaw = SKpsp$SADataRaw, plotHeaderRaw = SKpsp$plotHeaderRaw,
-                                measureHeaderRaw = SKpsp$measureHeaderRaw, treeDataRaw = SKpsp$treeDataRaw)
-SKtsp <- prepInputsSaskatchwanTSP(dPath = tempdir())
-SKtsp <- dataPurification_SKTSP_Mistik(compiledPlotData = SKtsp$compiledPlotData, compiledTreeData = SKtsp$compiledTreeData)
-
-ONpsp <- prepInputsOntarioPSP(dPath = tempdir())
-ONpsp <- dataPurification_ONPSP(ONPSPlist = ONpsp, sppEquiv = sppEquiv)
-
-NFIpsp <- prepInputsNFIPSP(dPath = tempdir())
-NFIpsp <- dataPurification_NFIPSP(lgptreeRaw = NFIpsp$pspTreeMeasure,
-                                  approxLocation = NFIpsp$pspLocation,
-                                  treeDamage = NFIpsp$pspTreeDamage, 
-                                  lgpHeaderRaw = NFIpsp$pspHeader, codesToExclude = NULL)
-PSPplot <- rbindlist(list(ABpsp$plotHeaderData, BCpsp$plotHeaderData, SKpsp$plotHeaderData, ONpsp$plotHeaderData, 
-                     SKtsp$plotHeaderData, NFIpsp$plotHeaderData), fill = TRUE)
-PSPloc <- geoCleanPSP(PSPplot)
-
+dPath <- tempdir()# adjust as needed
+PSPs <- PSPclean::getPSP(PSPdataTypes = "all", destinationPath = dPath, forGMCS = FALSE)
+PSPloc <- PSPs$PSPgis
+rm(PSPs)
 #get an elevation DEM - this is the 7.5 arcsecond DEM used for fireSense, from GTOPO
 CanadaDEM <- prepInputs(url = "https://drive.google.com/file/d/121x_CfWy2XP_-1av0cYE7sxUfb4pmsup/view?usp=sharing", 
                         destinationPath = tempdir())
-missingIDs <- PSPplot[is.na(Elevation),]$OrigPlotID1
-missingElevation <- sf::as_Spatial(PSPloc[PSPloc$OrigPlotID1 %in% missingIDs,])
-missingElevation <- data.table(OrigPlotID1 = missingElevation$OrigPlotID1,
-                               estimatedElevation = raster::extract(CanadaDEM, missingElevation))
 
-PSPgis <- as_Spatial(PSPloc)
-PSPcoord <- as.data.table(coordinates(PSPgis))
-PSPcoord[, OrigPlotID1 := PSPgis$OrigPlotID1]
+missingElev <- PSPloc[is.na(PSPloc$Elevation) | PSPloc$Elevation == -1,]
+estimatedElev <- data.table(OrigPlotID1 = missingElev$OrigPlotID1,
+                            estimatedElevation = extract(CanadaDEM, missingElev, ID = FALSE))
+setnames(estimatedElev, new = c("OrigPlotID1", "estimatedElevation"))
 
-PSPcoord <- PSPplot[, .(OrigPlotID1, Elevation)][PSPcoord, on = c("OrigPlotID1")]
-PSPcoord <- missingElevation[PSPcoord, on = c("OrigPlotID1")]
-PSPcoord[is.na(Elevation), Elevation := estimatedElevation]
+PSPcoord <- as.data.table(st_coordinates(PSPloc))
+PSPcoord[, OrigPlotID1 := PSPloc$OrigPlotID1]
+PSPcoord[, Elevation := PSPloc$Elevation]
+
+PSPcoord <- estimatedElev[PSPcoord, on = c("OrigPlotID1")]
+PSPcoord[OrigPlotID1 %in% missingElev$OrigPlotID1, Elevation := estimatedElevation]
 #confirm no NA - 
 # summary(PSPcoord)
 PSPcoord[, estimatedElevation := NULL]
@@ -70,10 +45,10 @@ PSPcoord[, estimatedElevation := NULL]
 #prep for climateNA
 #the columns have to be called "id1", "id2", "lat", "long", "elev"
 # sampleData <- fread("C:/users/ieddy/Downloads/ClimateNA_v640/inputFiles/input_test.csv")
-setnames(PSPcoord, c("OrigPlotID1", "coords.x1", "coords.x2", "Elevation"), 
+setnames(PSPcoord, c("OrigPlotID1", "X", "Y", "Elevation"), 
          c("id1", "long", "lat", "elev"))
 PSPcoord[, id2 := ""]
 setcolorder(PSPcoord, neworder = c("id1", "id2", "lat", "long", "elev"))
-PSPcoord <- unique(PSPcoord)
-write.csv(PSPcoord, "inputs/PSPforClimateNA_BC_AB_SK_ON_NFI.csv", row.names = FALSE)
+
+write.csv(PSPcoord, "inputs/PSPforClimateNA_BC_AB_SK_ON_NB_NFI.csv", row.names = FALSE)
 ```
