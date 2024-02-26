@@ -110,7 +110,7 @@ defineModule(sim, list(
     expectsInput(objectName = "PSPclimData", objectClass = "data.table",
                  desc = paste("climate data for each PSP from ClimateNA, in the native format returned by ClimateNA with csv",
                               "Temp is represented as degrees, not tenth of degrees as with the raster data"),
-                 sourceURL = "https://drive.google.com/file/d/17RrqiepZaGp9bVPkwWEQa0Nu4aQxRL8s/view?usp=share_link"),
+                 sourceURL = "https://drive.google.com/file/d/1kgQn27-pC0oSTfUqEbj7LWi1W4PpHxuV/view?usp=drive_link"),
     expectsInput(objectName = "studyAreaPSP", objectClass = "SpatialPolygonsDataFrame",
                  desc = paste("this area will be used to subset PSP plots before building the statistical model.",
                               "Currently PSP datasets with repeat measures exist only for Saskatchewan,",
@@ -577,8 +577,8 @@ sumPeriod <- function(x, m, p, clim, climVar) {
 
   if (!suppliedElsewhere("PSPclimData", sim)) {
     sim$PSPclimData <- prepInputs(url = extractURL("PSPclimData"),
+                                  targetFile = "PSPforClimateNA_BC_AB_SK_ON_NB_NFI_1921-2021MSY.csv",
                                   destinationPath = dPath,
-                                  targetFile = "PSPforClimateNA_BC_AB_SK_ON_NFI_1920-2021SY.csv",
                                   fun = "data.table::fread")
     setnames(sim$PSPclimData, old = c("id1", "id2"), new = c("OrigPlotID1", "OrigPlotID2"))
 
