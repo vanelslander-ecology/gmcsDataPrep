@@ -237,26 +237,24 @@ Init <- function(sim) {
                             model = P(sim)$mortalityModel,
                             userTags = c("mcsModel"))
     }
-    # if (is.null(sim$nullGrowthModel)) {
-    mod$nullGrowthModel <- Cache(gmcsModelBuild,
+
+    nullGrowthModel <- Cache(gmcsModelBuild,
                                  PSPmodelData = sim$PSPmodelData,
                                  model = P(sim)$nullMortalityModel,
                                  userTags = c("nullGrowthModel"))
-    # }
-    # if (is.null(sim$nullMortalityModel)) {
-    mod$nullMortalityModel <- Cache(gmcsModelBuild,
+
+    nullMortalityModel <- Cache(gmcsModelBuild,
                                     PSPmodelData = sim$PSPmodelData,
                                     model = P(sim)$nullMortalityModel,
                                     userTags = c("nullMortalityModel"))
-    # }
 
     ## reporting NLL as comparison statistic - could do RME or MAE?
     if (nrow(sim$PSPvalidationData) > 0) {
       assign("PSPmodelData", sim$PSPmodelData, .GlobalEnv) ## needed until end of sim
       ## TODO: use more specific name to avoid clobbering user's global env objs
       ## E.g., `._tmp_gmcsDataPrep_PSPmodelData_.`
-      compareModels(nullGrowth = mod$nullGrowthModel,
-                    nullMortality = mod$nullMortalityModel,
+      compareModels(nullGrowth = nullGrowthModel,
+                    nullMortality = nullMortalityModel,
                     gcs = sim$gcsModel,
                     mcs = sim$mcsModel,
                     validationData = sim$PSPvalidationData,
