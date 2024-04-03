@@ -32,7 +32,7 @@ library(SpaDES)
 library(LandR)
 library(sf)
 library(fasterize)
-library(raster)
+library(terra)
 
 setPaths(modulePath = file.path("../"))
 getPaths() # shows where the 4 relevant paths are
@@ -41,7 +41,7 @@ times <- list(start = 2011, end = 2012)
 
 #the study area isn't necessary to test models - it is only used to satisfy climate data prep. Smaller is better
 studyArea <- randomStudyArea(size = 10000*6.25*400)
-templateRaster <- raster(extent(studyArea), crs = crs(studyArea), res = c(500,500))
+templateRaster <- rast(ext(studyArea), crs = crs(studyArea), res = c(500,500))
 templateRaster <- setValues(templateRaster, 1)
 
 #this is the contiguous ecoregions of the RIA. It is suggested that users pass a studyAreaPSP 

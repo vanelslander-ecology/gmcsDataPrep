@@ -227,26 +227,24 @@ Init <- function(sim) {
                             model = P(sim)$mortalityModel,
                             userTags = c("mcsModel"))
     }
-    # if (is.null(sim$nullGrowthModel)) {
-    mod$nullGrowthModel <- Cache(gmcsModelBuild,
+
+    nullGrowthModel <- Cache(gmcsModelBuild,
                                  PSPmodelData = sim$PSPmodelData,
                                  model = P(sim)$nullMortalityModel,
                                  userTags = c("nullGrowthModel"))
-    # }
-    # if (is.null(sim$nullMortalityModel)) {
-    mod$nullMortalityModel <- Cache(gmcsModelBuild,
+
+    nullMortalityModel <- Cache(gmcsModelBuild,
                                     PSPmodelData = sim$PSPmodelData,
                                     model = P(sim)$nullMortalityModel,
                                     userTags = c("nullMortalityModel"))
-    # }
 
     ## reporting NLL as comparison statistic - could do RME or MAE?
     if (nrow(sim$PSPvalidationData) > 0) {
       assign("PSPmodelData", sim$PSPmodelData, .GlobalEnv) ## needed until end of sim
       ## TODO: use more specific name to avoid clobbering user's global env objs
       ## E.g., `._tmp_gmcsDataPrep_PSPmodelData_.`
-      compareModels(nullGrowth = mod$nullGrowthModel,
-                    nullMortality = mod$nullMortalityModel,
+      compareModels(nullGrowth = nullGrowthModel,
+                    nullMortality = nullMortalityModel,
                     gcs = sim$gcsModel,
                     mcs = sim$mcsModel,
                     validationData = sim$PSPvalidationData,
@@ -381,7 +379,7 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
 
   #if c.m. has partial names, the empty names become "", with no names they are NULL
   anomalies <- climateVariables[!names(climateVariables) %in% c("")]
-  if (length(anomalies) > 0){
+  if (length(anomalies) > 0) {
     #check if year is already subset - if not, subset to PSP period
     anomalyData <- PSPclimData[Year >= min(PSPperiod) & Year <= max(PSPperiod),
                                lapply(.SD, mean), .SDcol = anomalies, .(OrigPlotID1)]
@@ -389,7 +387,7 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
     PSPmodelData <- anomalyData[PSPmodelData, on = c("OrigPlotID1")]
 
     #recalculate the anomaly(s) via subtraction
-    for (i in length(anomalies)){
+    for (i in length(anomalies)) {
       #index because the name isn't preserved if you take the object itself
       temp <- anomalies[i]
       setnames(PSPmodelData, c(temp, names(temp)), c("var", "anom"))
