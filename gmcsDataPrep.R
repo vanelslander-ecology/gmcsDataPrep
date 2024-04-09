@@ -239,14 +239,14 @@ Init <- function(sim) {
     }
 
     nullGrowthModel <- Cache(gmcsModelBuild,
-                                 PSPmodelData = sim$PSPmodelData,
-                                 model = P(sim)$nullMortalityModel,
-                                 userTags = c("nullGrowthModel"))
+                             PSPmodelData = sim$PSPmodelData,
+                             model = P(sim)$nullMortalityModel,
+                             userTags = c("nullGrowthModel"))
 
     nullMortalityModel <- Cache(gmcsModelBuild,
-                                    PSPmodelData = sim$PSPmodelData,
-                                    model = P(sim)$nullMortalityModel,
-                                    userTags = c("nullMortalityModel"))
+                                PSPmodelData = sim$PSPmodelData,
+                                model = P(sim)$nullMortalityModel,
+                                userTags = c("nullMortalityModel"))
 
     ## reporting NLL as comparison statistic - could do RME or MAE?
     if (nrow(sim$PSPvalidationData) > 0) {
