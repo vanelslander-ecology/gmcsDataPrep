@@ -151,7 +151,7 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 ### template initialization
 Init <- function(sim) {
   if (is.null(sim$mcsModel) | is.null(sim$gcsModel)) {
-    message("building climate-sensitive growth and mortailty models")
+    message("building climate-sensitive growth and mortality models")
     #stupid-catch
     if (length(P(sim)$PSPperiod) < 2) {
       stop("Please supply P(sim)$PSPperiod of length 2 or greater")
