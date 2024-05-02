@@ -261,6 +261,8 @@ Init <- function(sim) {
 
 prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData, useHeight,
                           biomassModel, PSPperiod, minDBH, minSize, minTrees) {
+
+  message(yellow("There are", nrow(PSPgis), "initial PSPs"))
   ## crop points to studyAreaPSP
   if (!is.null(studyAreaPSP)) {
     message(yellow("Filtering PSPs to study Area..."))
