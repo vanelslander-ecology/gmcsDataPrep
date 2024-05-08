@@ -137,6 +137,15 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
       # do stuff for this event
       sim <- Init(sim)
 
+      sim <- scheduleEvent(sim, start(sim) + 1L, eventType = "scheduleScrubGlobalEnv", eventPriority = .last())
+    },
+    scheduleScrubGlobalEnv = {
+      ## 2024-05: this event provides a temporary workaround to a SpaDES.core scheduling bug.
+      ## When `spades.allowInitDuringSimInit` is TRUE, SpaDES.core executes init events
+      ## in a new simulation, with a modified end time, meaning any events using `end(sim)`
+      ## will have those events scheduled for this modified time, and not the actual end time.
+      ## We work around this by scheduling the scheduling for later.
+      ## TODO: remove this workaround when either: gamlss no longer used, or scheduling bug fixed.
       sim <- scheduleEvent(sim, end(sim), eventType = "scrubGlobalEnv", eventPriority = .last())
     },
     scrubGlobalEnv = {
