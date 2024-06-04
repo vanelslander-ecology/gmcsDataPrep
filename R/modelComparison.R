@@ -57,14 +57,13 @@ prepValidationData <- function(PSPmodelData, validationProportion) {
   #set aside min. 2 observations per plot to estimate random component
   availableN <- sum(possiblePlots$N - 2)
 
-  #randomly sample, stratified by OrigPlotID1
-  validationPlots <- PSPmodelData[OrigPlotID1 %in% possiblePlots$OrigPlotID1]
-  validationPlots <- validationPlots[, .SD[sample(.N, size = c(.N - 2), replace = FALSE)],  .(OrigPlotID1)]
-
   if (targetN > availableN) {
     warning("not enough plots for current validation target")
     validationPlots <- validationPlots[0,]
   } else {
+    #randomly sample, stratified by OrigPlotID1
+    validationPlots <- PSPmodelData[OrigPlotID1 %in% possiblePlots$OrigPlotID1]
+    validationPlots <- validationPlots[, .SD[sample(.N, size = c(.N - 2), replace = FALSE)],  .(OrigPlotID1)]
     #reserve these extra plots for fitting
     validationPlots[, foo := sample(.N, replace = FALSE)]
     validationPlots <- validationPlots[foo > availableN - targetN,]
