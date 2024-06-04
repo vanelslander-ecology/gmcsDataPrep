@@ -17,7 +17,7 @@ defineModule(sim, list(
                   "ianmseddy/LandR.CS@development (>= 0.0.3.9000)",
                   "MASS", "nlme",
                   "PredictiveEcology/pemisc@development (>= 0.0.3.9002)",
-                  "ianmseddy/PSPclean@development (>= 0.1.4.9003)", "sf"),
+                  "ianmseddy/PSPclean@QCPSP (>= 0.1.4.9005)", "sf"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("biomassModel", "character", "Lambert2005", NA, NA,
