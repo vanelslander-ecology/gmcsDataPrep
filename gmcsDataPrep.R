@@ -8,7 +8,6 @@ defineModule(sim, list(
   ),
   childModules = character(0),
   version = list(gmcsDataPrep = "0.0.2.9000"),
-  spatialExtent = raster::extent(rep(NA_real_, 4)),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
@@ -298,7 +297,7 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   PSPplot <- PSPplot[MeasureYear > min(PSPperiod) &
                        MeasureYear < max(PSPperiod),]
   PSPclimData[Year > min(PSPperiod) & Year < max(PSPperiod),]
-
+  message(yellow(paste0("There are "), length(unique(PSPplot$OrigPlotID1)), " PSPs in the study period"))
   ## Join data (should be small enough by now)
   PSPmeasure <- PSPmeasure[PSPplot, on = c('MeasureID', 'OrigPlotID1', 'MeasureYear')]
 
@@ -570,7 +569,7 @@ sumPeriod <- function(x, m, p, clim, climVar) {
                      PSPdataTypes = P(sim)$PSPdataTypes,
                      destinationPath = dPath,
                      forGMCS = TRUE,
-                     userTags = c(cacheTags, P(sim)$PSPdataTypes))
+                     userTags = c(cacheTags, P(sim)$PSPdataTypes, "getPSP"))
 
     sim$PSPmeasure_gmcs <- PSPdata$PSPmeasure
     sim$PSPplot_gmcs <- PSPdata$PSPplot
