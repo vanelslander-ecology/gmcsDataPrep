@@ -16,6 +16,7 @@ defineModule(sim, list(
                   "PredictiveEcology/LandR@development (>= 1.1.0.9009)",
                   "ianmseddy/LandR.CS@development (>= 0.0.3.9000)",
                   "MASS", "nlme",
+                  "PredictiveEcology/reproducible",
                   "PredictiveEcology/pemisc@development (>= 0.0.3.9002)",
                   "ianmseddy/PSPclean@QCPSP (>= 0.1.4.9005)", "sf"),
   parameters = rbind(
@@ -275,7 +276,7 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   if (!is.null(studyAreaPSP)) {
     message(yellow("Filtering PSPs to study Area..."))
     #TODO: confirm this postProcess works
-    PSP_sa <- postProcess(PSPgis, maskTo = studyAreaPSP)
+    PSP_sa <- reproducible::postProcess(PSPgis, maskTo = studyAreaPSP)
     message(yellow(paste0("There are "), nrow(PSP_sa), " PSPs in your study area"))
   } else {
     PSP_sa <- PSPgis
