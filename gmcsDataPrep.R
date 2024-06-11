@@ -13,7 +13,7 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
   reqdPkgs = list("crayon", "data.table", "gamlss", "ggplot2", "glmm",
-                  "PredictiveEcology/LandR@development (>= 1.1.0.9009)",
+                  "PredictiveEcology/LandR@development (>= 1.1.4)",
                   "ianmseddy/LandR.CS@development (>= 0.0.3.9000)",
                   "MASS", "nlme",
                   "PredictiveEcology/reproducible (>= 2.1.0)",
