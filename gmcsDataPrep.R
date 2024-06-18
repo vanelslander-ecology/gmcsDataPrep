@@ -534,10 +534,6 @@ pspIntervals <- function(i, M, P, Clim, ClimVar) {
 }
 
 sumPeriod <- function(x, m, p, clim, climVar) {
-  # Duplicate plots arise from variable 'stand' (OrigPlotID2) that varied within the same plot.
-  # this has been corrected by treating these as new plot ids.
-  # note OrigPlotID2 has been removed in latest edition of PSPs, as stand/plot fields were concatenated
-  # TODO: review this code and confirm if it is still necessary
   # Tree No. is not unique between stands, which means the same plot can have duplicate trees.
   # sort by year. Calculate the changes in biomass, inc. unobserved growth and mortality
   # must match MeasureID between plot and measure data;
@@ -588,8 +584,9 @@ sumPeriod <- function(x, m, p, clim, climVar) {
                                   destinationPath = dPath,
                                   fun = "data.table::fread")
     setnames(sim$PSPclimData, old = c("id1"), new = c("OrigPlotID1"))
-    sim$PSPclimData[, id2 := NULL]
-
+    if (!is.null(sim$PSPclimData$id2)){
+      sim$PSPclimData[, id2 := NULL]
+    }
     sim$PSPclimData <- sim$PSPclimData[MAT != -9999] #missing plots get -9999 as variable
   }
 
