@@ -583,11 +583,12 @@ sumPeriod <- function(x, m, p, clim, climVar) {
                                   targetFile = "PSPforClimateNA_BC_AB_SK_ON_QC_NB_NFI.csv",
                                   destinationPath = dPath,
                                   fun = "data.table::fread")
+    sim$PSPclimData <- sim$PSPclimData[MAT != -9999] #missing plots get -9999 as variable
+    #this must be done first as some data is "malformed" exiting ClimateNA
     setnames(sim$PSPclimData, old = c("id1"), new = c("OrigPlotID1"))
-    if (!is.null(sim$PSPclimData$id2)){
+    if (!is.null(sim$PSPclimData$id2)) {
       sim$PSPclimData[, id2 := NULL]
     }
-    sim$PSPclimData <- sim$PSPclimData[MAT != -9999] #missing plots get -9999 as variable
   }
 
   return(invisible(sim))
