@@ -157,7 +157,7 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 Init <- function(sim) {
   if (is.null(sim$mcsModel) | is.null(sim$gcsModel)) {
     message("building climate-sensitive growth and mortality models")
-    #stupid-catch
+    #bug-catch
     if (length(P(sim)$PSPperiod) < 2) {
       stop("Please supply P(sim)$PSPperiod of length 2 or greater")
     }
@@ -284,7 +284,7 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   PSPplot <- PSPplot[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
   PSPclimData <- PSPclimData[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
 
-  ## might as well drop species with no biomass match
+  ## drop species with no biomass match
 
   ## `length(PSPclimData)/length(PSP_sa)` should always yield a whole number.
   ## Filter data by study period
@@ -319,6 +319,7 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
 
   ## subset by biomass, because some plots have no species that can be estimated
   ## these will be counted in the min trees requirement, but may result in a plot of NA biomass if repeat measures = 2+
+  browser()
   if (useHeight) {
     PSPmeasureNoHeight <- PSPmeasure[is.na(Height)]
     PSPmeasureHeight <- PSPmeasure[!is.na(Height)]
