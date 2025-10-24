@@ -165,6 +165,10 @@ Init <- function(sim) {
     if (any(is.null(sim$PSPmeasure_gmcs), is.null(sim$PSPplot_gmcs), is.null(sim$PSPgis_gmcs))) {
       stop("The PSP objects are being supplied incorrectly. Please review loadOrder argument in simInit")
     }
+    
+    #numeric from plotID
+    #this should be done before creating modelData so the factors aren't duplicated in the validation set
+    sim$PSPplot_gmcs[, plotNumeric := as.numeric(as.factor(OrigPlotID1))]
 
     sim$PSPmodelData <- Cache(prepModelData,
                               climateVariables = P(sim)$climateVariables,
@@ -204,8 +208,9 @@ Init <- function(sim) {
 
       ## remove all observations that are identical
       sim$PSPvalidationData <- setkey(sim$PSPvalidationData)[!sim$PSPmodelData]
+    
       ## remove all observations for which there is no random effect in the fitting data
-      sim$PSPvalidationData <- sim$PSPvalidationData[OrigPlotID1 %in% sim$PSPmodelData$OrigPlotID1, ]
+      # sim$PSPvalidationData <- sim$PSPvalidationData[OrigPlotID1 %in% sim$PSPmodelData$OrigPlotID1, ]
     } else {
       ## sample validation data from PSPmodelData
       outData <- Cache(FUN = prepValidationData,
@@ -216,6 +221,8 @@ Init <- function(sim) {
       sim$PSPmodelData <- outData$PSPmodelData ## with some plots removed
       sim$PSPvalidationData <- outData$PSPvalidationData
     }
+    
+    browser()
 
     ## model building
     ## only replace the models if NULL, so user can supply their own models
@@ -357,6 +364,7 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   ## Reduce PSPmeasure to MeasureID, PlotID1, PlotID2, MeasureYear, remove duplicates
   ## then find repeat measures of MeasureYear, match back to MeasureID in both PSPplot and PSPmeasure.
   message(yellow("Filtering by at least 3 repeat measures per plot"))
+
   repeats <- PSPmeasure[, .(MeasureID, OrigPlotID1, MeasureYear)] %>%
     .[!duplicated(.)] %>%
     .[, .('repeatMeasures' = .N), by = .(OrigPlotID1)] %>%
@@ -425,9 +433,9 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   PSPmodelMean <- unique(PSPmodelData[, .SD, .SDcols = c(subCols, "OrigPlotID1", "period")])
 
   PSPmodelData <- PSPmodelSum[PSPmodelMean, on = c("period", "OrigPlotID1")]
+  PSPmodelData <- unique(PSPplot[, .(OrigPlotID1, plotNumeric)])[PSPmodelData, on = c("OrigPlotID1")]
 
-
-  setcolorder(PSPmodelData, c("OrigPlotID1", "plotSize", "year", "period", "periodLength",
+  setcolorder(PSPmodelData, c("OrigPlotID1", "plotNumeric", "plotSize", "year", "period", "periodLength",
                               "standAge", "logAge", "growth", "mortality", "biomass", "netBiomass"))
   return(PSPmodelData)
 }

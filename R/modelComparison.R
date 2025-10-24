@@ -71,7 +71,7 @@ prepValidationData <- function(PSPmodelData, validationProportion) {
   }
   #MeasureID is no longer in data because each observation is two meausurements
   #Use period or year to distinguish repeat observations with anti-join
-  PSPmodelData <- PSPmodelData[!validationPlots, on = c("OrigPlotID1", "period")]
+  PSPmodelData <- PSPmodelData[!validationPlots, on = c("OrigPlotID1", "period", "plotNumeric")]
 
   return(list("PSPmodelData" = PSPmodelData,
               "PSPvalidationData" = validationPlots))
