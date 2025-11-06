@@ -12,7 +12,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list("crayon", "data.table", "gamlss", "ggplot2", "glmm", "gpboost",
+  reqdPkgs = list("carat", "crayon", "data.table", "gamlss", "ggplot2", "glmm", "gpboost",
                   "PredictiveEcology/LandR@development (>= 1.1.4)",
                   "ianmseddy/LandR.CS@development (>= 0.0.3.9000)",
                   "MASS", "nlme",
@@ -62,9 +62,9 @@ defineModule(sim, list(
                                  "The canonical methodology did not force a minimum size but the minimum size was 0.04 ha.")),
     defineParameter("mortalityModel", class = "call",
                     quote(gamlss::gamlss(formula = mortality ~ logAge * (ATA + CMI) + ATA * CMI,
-                                 LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
-                                 sigma.formula = ~logAge + ATA,  nu.formula = ~logAge, family = gamlss.dist::ZAIG,
-                                 data = PSPmodelData)), NA, NA,
+                                         LandR.CS::own(random = ~ 1|OrigPlotID1, weights = varFunc(~plotSize^0.5 * periodLength)),
+                                         sigma.formula = ~logAge + ATA,  nu.formula = ~logAge, family = gamlss.dist::ZAIG,
+                                         data = PSPmodelData)), NA, NA,
                     desc = paste("Quoted model used to predict mortality as a function of `logAge`, `CMI`, `ATA`, and",
                                  "their interactions, with `PlotID` as random effect. Defaults to zero-inflated inverse gaussian",
                                  "glm that requires custom `LandR.CS` predict function to predict.")),
@@ -138,7 +138,7 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
     init = {
       # do stuff for this event
       sim <- Init(sim)
-
+      
       sim <- scheduleEvent(sim, start(sim) + 1L, eventType = "scheduleScrubGlobalEnv", eventPriority = .last())
     },
     scheduleScrubGlobalEnv = {
@@ -161,13 +161,14 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
+  
   if (is.null(sim$mcsModel) | is.null(sim$gcsModel)) {
     message("building climate-sensitive growth and mortality models")
     #stupid-catch
     if (length(P(sim)$PSPperiod) < 2) {
       stop("Please supply P(sim)$PSPperiod of length 2 or greater")
     }
-
+    
     if (any(is.null(sim$PSPmeasure_gmcs), is.null(sim$PSPplot_gmcs), is.null(sim$PSPgis_gmcs))) {
       stop("The PSP objects are being supplied incorrectly. Please review loadOrder argument in simInit")
     }
@@ -175,8 +176,7 @@ Init <- function(sim) {
     #numeric from plotID
     #this should be done before creating modelData so the factors aren't duplicated in the validation set
     sim$PSPplot_gmcs[, plotNumeric := as.numeric(as.factor(OrigPlotID1))]
- 
-    browser()
+    
     sim$PSPmodelData <- prepModelData(
       climateVariables = P(sim)$climateVariables,
       studyAreaPSP = sim$studyAreaPSP,
@@ -192,45 +192,7 @@ Init <- function(sim) {
       minSampleForSpecies = P(sim)$minSampleForSpecies,
       minSize = P(sim)$minSize,
       minTrees = P(sim)$minTrees) |>
-  Cache(userTags = c("gmcsDataPrep", "prepModelData"))
-
-    ## building validation data
-    message("Preparing validation dataset")
-    if (!is.null(sim$PSPvalidationPeriod)) {
-      ## build validation data from observations in PSPvalidationPeriod that also aren't in model data
-      sim$PSPvalidationData <- Cache(prepModelData,
-                                     climateVariables = P(sim)$climateVariables,
-                                     studyAreaPSP = sim$studyAreaPSP,
-                                     PSPgis = sim$PSPgis_gmcs,
-                                     PSPmeasure = sim$PSPmeasure_gmcs,
-                                     PSPplot = sim$PSPplot_gmcs,
-                                     PSPclimData = sim$PSPclimData,
-                                     useHeight = P(sim)$useHeight,
-                                     biomassModel = P(sim)$biomassModel,
-                                     PSPperiod = P(sim)$PSPvalidationPeriod,
-                                     minDBH = P(sim)$minDBH,
-                                     minSampleForSpecies = P(sim)$minSampleForSpecies,
-                                     minMeasures = P(sim)$minMeasures,
-                                     minSize = P(sim)$minSize,
-                                     minTrees = P(sim)$minTrees,
-                                     useCache = P(sim)$.useCache,
-                                     userTags = c("gmcsDataPrep", "prepValidationData"))
-
-      ## remove all observations that are identical
-      sim$PSPvalidationData <- setkey(sim$PSPvalidationData)[!sim$PSPmodelData]
-    
-      ## remove all observations for which there is no random effect in the fitting data
-      # sim$PSPvalidationData <- sim$PSPvalidationData[OrigPlotID1 %in% sim$PSPmodelData$OrigPlotID1, ]
-    } else {
-      ## sample validation data from PSPmodelData
-      outData <- Cache(FUN = prepValidationData,
-                       PSPmodelData = sim$PSPmodelData,
-                       validationProportion = P(sim)$validationProportion,
-                       useCache = P(sim)$.useCache,
-                       userTags = c("gmcsDataPrep", "prepValidationData"))
-      sim$PSPmodelData <- outData$PSPmodelData ## with some plots removed
-      sim$PSPvalidationData <- outData$PSPvalidationData
-    }
+      Cache(userTags = c("gmcsDataPrep", "prepModelData"))
     
     browser()
 
@@ -281,8 +243,9 @@ Init <- function(sim) {
 
 
 
-prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData, useHeight,
-                          biomassModel, PSPperiod, minDBH, minMeasures, minSampleForSpecies, minSize, minTrees) {
+prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PSPplot, 
+                          PSPclimData, useHeight, biomassModel, PSPperiod, minDBH, 
+                          minMeasures, minSampleForSpecies, minSize, minTrees) {
 
   message(yellow("There are", nrow(PSPgis), "initial PSPs"))
   ## crop points to studyAreaPSP
@@ -452,11 +415,11 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   
   #calculate biomass as the sum of biomass by species within a plot, 
   # and scale growth by biomass 
+  browser()
   PSPmodelData[, standBiomass := sum(biomass), .(OrigPlotID1, period)]
   PSPmodelData[, growth := growth/biomass]
   #TODO: discuss whether mortality should also be scaled
   
-  #treat species
   PSPmodelData[, psp_spp := sppLong]
   PSPmodelData[, sppCount := .N, .(psp_spp)]
   PSPmodelData[sppCount < minSampleForSpecies, psp_spp := "otherSpp"]
@@ -464,6 +427,8 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   PSPmodelData[, sppLong := as.factor(sppLong)]
   PSPmodelData[, psp_spp := as.factor(psp_spp)]
   PSPmodelData[, sppCount := NULL]
+  
+  
 
   return(PSPmodelData)
 }
