@@ -54,6 +54,9 @@ defineModule(sim, list(
                                  "This is prior to filtering by minimum DBH.",
                                  "This may not be suitable for every use case.
                                  The default is 30, based on the GCB paper <doi: 10.1111/gcb.12994>.")),
+    defineParameter("minSampleForSpecies", "numeric", 80, 0, NA, 
+                    desc = paste("the minimum number of observations of tree species within stands below which", 
+                                 "they are combined as a single category of 'other spp' in the climate-sensitive models")),
     defineParameter("minSize", "numeric", 0.02, 0, NA,
                     desc = paste("The minimum size (in hectares) of growth plot. All metrics are adjusted for area.",
                                  "The canonical methodology did not force a minimum size but the minimum size was 0.04 ha.")),
@@ -172,7 +175,8 @@ Init <- function(sim) {
     #numeric from plotID
     #this should be done before creating modelData so the factors aren't duplicated in the validation set
     sim$PSPplot_gmcs[, plotNumeric := as.numeric(as.factor(OrigPlotID1))]
-
+ 
+    browser()
     sim$PSPmodelData <- prepModelData(
       climateVariables = P(sim)$climateVariables,
       studyAreaPSP = sim$studyAreaPSP,
@@ -185,6 +189,7 @@ Init <- function(sim) {
       PSPperiod = P(sim)$PSPperiod,
       minDBH = P(sim)$minDBH,
       minMeasures = P(sim)$minMeasures,
+      minSampleForSpecies = P(sim)$minSampleForSpecies,
       minSize = P(sim)$minSize,
       minTrees = P(sim)$minTrees) |>
   Cache(userTags = c("gmcsDataPrep", "prepModelData"))
@@ -204,6 +209,7 @@ Init <- function(sim) {
                                      biomassModel = P(sim)$biomassModel,
                                      PSPperiod = P(sim)$PSPvalidationPeriod,
                                      minDBH = P(sim)$minDBH,
+                                     minSampleForSpecies = P(sim)$minSampleForSpecies,
                                      minMeasures = P(sim)$minMeasures,
                                      minSize = P(sim)$minSize,
                                      minTrees = P(sim)$minTrees,
@@ -276,7 +282,7 @@ Init <- function(sim) {
 
 
 prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PSPplot, PSPclimData, useHeight,
-                          biomassModel, PSPperiod, minDBH, minMeasures, minSize, minTrees) {
+                          biomassModel, PSPperiod, minDBH, minMeasures, minSampleForSpecies, minSize, minTrees) {
 
   message(yellow("There are", nrow(PSPgis), "initial PSPs"))
   ## crop points to studyAreaPSP
@@ -417,9 +423,7 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
       setnames(PSPmodelData, c("var", "anom"), c(temp, names(temp)))
     }
   }
-  PSPmodelData$species <- factor(PSPmodelData$species)
-  PSPmodelData[, sppLong := as.factor(sppLong)]
-  browser()
+
   #drop species, because you already have newSpeciesName
   PSPmodelData[, species := NULL]
   
@@ -445,9 +449,23 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
 
   setcolorder(PSPmodelData, c("OrigPlotID1", "plotNumeric", "plotSize", "year", "period", "periodLength",
                               "standAge", "logAge", "sppLong", "growth", "mortality", "biomass", "netBiomass"))
-  #fix species - make it a factor, and lump to other if N < some amount
-  #calculate biomass as the sum of bioamss by species within a plot
   
+  
+  #calculate biomass as the sum of biomass by species within a plot, 
+  # and scale growth by biomass 
+  PSPmodelData[, standBiomass := sum(biomass), .(OrigPlotID1, period)]
+  PSPmodelData[, growth := growth/biomass]
+  #TODO: discuss whether mortality should also be scaled
+  
+  #treat species
+  PSPmodelData[, psp_spp := sppLong]
+  PSPmodelData[, sppCount := .N, .(psp_spp)]
+
+  PSPmodelData[sppCount < minSampleForSpecies, psp_spp := "otherSpp"]
+  
+  PSPmodelData[, sppLong := as.factor(sppLong)]
+  PSPmodelData[, psp_spp := as.factor(psp_spp)]
+  PSPmodelData[, sppCount := NULL]
   browser()
   
   return(PSPmodelData)
