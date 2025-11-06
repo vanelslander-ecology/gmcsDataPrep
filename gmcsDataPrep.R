@@ -18,7 +18,7 @@ defineModule(sim, list(
                   "MASS", "nlme",
                   "PredictiveEcology/reproducible (>= 2.1.0)",
                   "PredictiveEcology/pemisc@development (>= 0.0.3.9002)",
-                  "ianmseddy/PSPclean@development (>= 0.1.5.9002)", "sf"),
+                  "ianmseddy/PSPclean@development (>= 0.1.5.9002)", "sf", "xgboost"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("biomassModel", "character", "Lambert2005", NA, NA,
@@ -450,7 +450,6 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   setcolorder(PSPmodelData, c("OrigPlotID1", "plotNumeric", "plotSize", "year", "period", "periodLength",
                               "standAge", "logAge", "sppLong", "growth", "mortality", "biomass", "netBiomass"))
   
-  
   #calculate biomass as the sum of biomass by species within a plot, 
   # and scale growth by biomass 
   PSPmodelData[, standBiomass := sum(biomass), .(OrigPlotID1, period)]
@@ -460,14 +459,12 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   #treat species
   PSPmodelData[, psp_spp := sppLong]
   PSPmodelData[, sppCount := .N, .(psp_spp)]
-
   PSPmodelData[sppCount < minSampleForSpecies, psp_spp := "otherSpp"]
   
   PSPmodelData[, sppLong := as.factor(sppLong)]
   PSPmodelData[, psp_spp := as.factor(psp_spp)]
   PSPmodelData[, sppCount := NULL]
-  browser()
-  
+
   return(PSPmodelData)
 }
 
