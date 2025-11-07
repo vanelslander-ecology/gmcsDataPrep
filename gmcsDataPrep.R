@@ -387,8 +387,6 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
     }
   }
 
-  #drop species, because you already have newSpeciesName
-  PSPmodelData[, species := NULL]
   
   ## Standardize by plotSize and change units from kg/ha to g/m2. = *1000 g/kg / 10000 m2/ha
   PSPmodelData <- PSPmodelData[, growth_gm2 := growth/plotSize/10] %>%
@@ -397,15 +395,21 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   # Sum species-specific mortality, growth, and net biomass by plot and year
   # growth is set to 1 if it would be 0 (to avoid model error - anyway  0 growth is measurement error)
 
-  PSPmodelSum <- PSPmodelData[, .("growth" = pmax(1, sum(growth_gm2)), "mortality" = mortality_gm2,
+  PSPmodelSum <- PSPmodelData[, .("growth" = pmax(1, sum(growth_gm2)), "mortality" = sum(mortality_gm2),
                                   "netBiomass" = sum(netBiomass_gm2), biomass = sum(biomass)),
                               by = c("OrigPlotID1", "period", "sppLong")]
   
-  PSPmodelData[, c("mortality_gm2", "growth_gm2", "netBiomass_gm2") := NULL]
+  PSPmodelData[, c("mortality_gm2", "growth_gm2", "netBiomass_gm2", "growth", "mortality") := NULL]
+  PSPmodelData <- unique(PSPmodelData)
   subCols <- names(PSPmodelData)[!names(PSPmodelData) %in% c(names(PSPmodelSum))]
   joinCols <- setdiff(names(PSPmodelData), subCols)
+  
   #join back to get the climate and other relevant information
   PSPmodelMean <- unique(PSPmodelData[, .SD, .SDcols = c(subCols, joinCols)])
+  PSPmodelMean[, N := .N, .(OrigPlotID1, period, sppLong)]
+  if (nrow(PSPmodelMean[N > 1,]) > 0) {
+    stop("an issue has occured with PSP data model building")
+  }
   PSPmodelData <- PSPmodelSum[PSPmodelMean, on = joinCols]
   
   PSPmodelData <- unique(PSPplot[, .(OrigPlotID1, plotNumeric)])[PSPmodelData, on = c("OrigPlotID1")]
@@ -479,24 +483,28 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
     return(NULL)
     ## `nrow(living1) == 0` will happen if tree numbers change between measurements
   }
-  
+  browser() #review these calculations once
   ## Find observed annual changes in mortality and growth
   living2$origBiomass <- living1$biomass
   ## growth cannot be negative, by definition
   living2[biomass < origBiomass, biomass := origBiomass]
 
+  # TODO: there are some plots that have black spruce with different codings (e.g. BL, Bl)
+  # (this is likely true for others - but only tested in BC atm)
+  # These SHOULD be combined, but the way to do that is to only return the single standardized column name
+  # unfortunately this means if any species share a biomass equation, we lose knowledge of their existence
+  # for example Engelmann and Hybrid white spruce. Consider the implications 
   living <- living2[, .(newGrowth =  sum(biomass - origBiomass)/censusLength,
-                        biomass = sum(biomass)),,
-                    c("Species", "newSpeciesName")] %>%
-    setkey(., Species, newSpeciesName)
+                        biomass = sum(origBiomass)), .(newSpeciesName)] |>
+    setkey(newSpeciesName)
 
   newborn <- newborn[, .(newGrowth = sum(biomass - origBiomass) ,
-                         biomass = sum(biomass)),
-                     c("Species", "newSpeciesName")] %>%
-    setkey(., Species, newSpeciesName)
+                         biomass = sum(origBiomass)),
+                     (newSpeciesName)] |>
+    setkey(newSpeciesName)
   #measure from census midpoint for new seedlings
-  dead <- dead[, .(mortality = sum(biomass) / censusLength), by = c("Species", "newSpeciesName")] %>%
-    setkey(., Species, newSpeciesName)
+  dead <- dead[, .(mortality = sum(biomass) / censusLength), .(newSpeciesName)] |>
+    setkey(newSpeciesName)
 
   #Find unobserved growth and mortality.
   #Not necessary when summing by species, b/c we can't assign species for unobserved trees
@@ -529,9 +537,8 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
 
   changes <- changes[, .("netGrowth" = sum(newGrowth), "mortality" = sum(mortality),
                          biomass = sum(biomass, na.rm = TRUE)),
-                     by = c("Species", "newSpeciesName")]
-  changes <- changes[, .("species" = Species,
-                         "sppLong" = newSpeciesName,
+                     by = c("newSpeciesName")]
+  changes <- changes[, .("sppLong" = newSpeciesName,
                          "netBiomass" = (netGrowth - mortality),
                          "biomass" = biomass,
                          "growth" = netGrowth,
