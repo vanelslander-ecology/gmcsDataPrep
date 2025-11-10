@@ -90,6 +90,8 @@ defineModule(sim, list(
                                  "would be used even though the first measurement falls outside the 2011 fitting period",
                                  "as the 2011 cutoff would remove this paired obsevation from the fitting data.",
                                  "If NULL, then validation dataset will instead be randomly sampled from available measurements.")),
+    defineParameter("sppEquivCol", "character", "LandR", NA, NA, 
+                    desc = paste("the column in `LandR::sppEquivalencies_CA` to use for standardizing PSP names")),
     defineParameter("useHeight", "logical", TRUE, NA, NA,
                     desc = paste("Use height be used to calculate biomass (in addition to DBH). If height is NA for individual",
                                  "trees, then only DBH will be used for those measurements")),
@@ -194,8 +196,6 @@ Init <- function(sim) {
       minTrees = P(sim)$minTrees) |>
       Cache(userTags = c("gmcsDataPrep", "prepModelData"))
     
-    browser()
-
     ## model building
     ## only replace the models if NULL, so user can supply their own models
     if (is.null(sim$gcsModel)) {
@@ -319,6 +319,7 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
       tempOut$missedSpecies <- unique(c(tempOut$missedSpecies, tempOutNoHeight$missedSpecies))
       PSPmeasure <- rbind(PSPmeasureHeight, PSPmeasureNoHeight)
     }
+
     PSPmeasure[, biomass := tempOut$biomass]
     setkey(PSPmeasure, MeasureID, OrigPlotID1, TreeNumber)
   } else {
@@ -328,8 +329,10 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
                                   includeHeight = FALSE,
                                   equationSource = biomassModel)
     PSPmeasure$biomass <- tempOut$biomass
+    
   }
-
+  #remove these measures as their inclusion only complicates code for no benefit
+  PSPmeasure <- PSPmeasure[biomass > 0]
   message(yellow("No biomass estimate possible for these species: "))
   print(tempOut$missedSpecies)
 
@@ -361,6 +364,7 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
     stop('all existing PSP data has been filtered.Try adjusting parameters')
   }
 
+  #Calculate mean of climate variables
   pSppChange <- lapply(unique(PSPplot$OrigPlotID1),
                        FUN = sumPeriod, m = PSPmeasure, p = PSPplot, dbh = minDBH,
                        clim = PSPclimData, climVar = tempVariableNames)
@@ -392,12 +396,13 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   PSPmodelData <- PSPmodelData[, growth_gm2 := growth/plotSize/10] %>%
     .[, mortality_gm2 := mortality/plotSize/10] %>%
     .[, netBiomass_gm2 := netBiomass/plotSize/10]
+  
   # Sum species-specific mortality, growth, and net biomass by plot and year
   # growth is set to 1 if it would be 0 (to avoid model error - anyway  0 growth is measurement error)
-
+  browser()
   PSPmodelSum <- PSPmodelData[, .("growth" = pmax(1, sum(growth_gm2)), "mortality" = sum(mortality_gm2),
                                   "netBiomass" = sum(netBiomass_gm2), biomass = sum(biomass)),
-                              by = c("OrigPlotID1", "period", "sppLong")]
+                              by = c("OrigPlotID1", "period", "Species")]
   
   PSPmodelData[, c("mortality_gm2", "growth_gm2", "netBiomass_gm2", "growth", "mortality") := NULL]
   PSPmodelData <- unique(PSPmodelData)
@@ -405,8 +410,9 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   joinCols <- setdiff(names(PSPmodelData), subCols)
   
   #join back to get the climate and other relevant information
+  # is this true?
   PSPmodelMean <- unique(PSPmodelData[, .SD, .SDcols = c(subCols, joinCols)])
-  PSPmodelMean[, N := .N, .(OrigPlotID1, period, sppLong)]
+  PSPmodelMean[, N := .N, .(OrigPlotID1, period, Species)]
   if (nrow(PSPmodelMean[N > 1,]) > 0) {
     stop("an issue has occured with PSP data model building")
   }
@@ -415,25 +421,25 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   PSPmodelData <- unique(PSPplot[, .(OrigPlotID1, plotNumeric)])[PSPmodelData, on = c("OrigPlotID1")]
 
   setcolorder(PSPmodelData, c("OrigPlotID1", "plotNumeric", "plotSize", "year", "period", "periodLength",
-                              "standAge", "logAge", "sppLong", "growth", "mortality", "biomass", "netBiomass"))
+                              "standAge", "logAge", "Species", "growth", "mortality", "biomass", "netBiomass"))
   
   #calculate biomass as the sum of biomass by species within a plot, 
   # and scale growth by biomass 
-  browser()
+
   PSPmodelData[, standBiomass := sum(biomass), .(OrigPlotID1, period)]
+  browser()
   PSPmodelData[, growth := growth/biomass]
   #TODO: discuss whether mortality should also be scaled
   
-  PSPmodelData[, psp_spp := sppLong]
+  #make this second column which will lump species with low representation into "other"
+  PSPmodelData[, psp_spp := Species]
   PSPmodelData[, sppCount := .N, .(psp_spp)]
   PSPmodelData[sppCount < minSampleForSpecies, psp_spp := "otherSpp"]
   
-  PSPmodelData[, sppLong := as.factor(sppLong)]
+  PSPmodelData[, Species := as.factor(Species)]
   PSPmodelData[, psp_spp := as.factor(psp_spp)]
   PSPmodelData[, sppCount := NULL]
   
-  
-
   return(PSPmodelData)
 }
 
@@ -446,6 +452,7 @@ gmcsModelBuild <- function(PSPmodelData, model) {
 }
 
 pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
+  #track why species becomes 0
   #Calculate climate variables
   meanClim <- Clim[Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1],
                    lapply(.SD, mean), .SDcol = ClimVar, .(OrigPlotID1)]
@@ -483,7 +490,6 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
     return(NULL)
     ## `nrow(living1) == 0` will happen if tree numbers change between measurements
   }
-  browser() #review these calculations once
   ## Find observed annual changes in mortality and growth
   living2$origBiomass <- living1$biomass
   ## growth cannot be negative, by definition
@@ -495,16 +501,15 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   # unfortunately this means if any species share a biomass equation, we lose knowledge of their existence
   # for example Engelmann and Hybrid white spruce. Consider the implications 
   living <- living2[, .(newGrowth =  sum(biomass - origBiomass)/censusLength,
-                        biomass = sum(origBiomass)), .(newSpeciesName)] |>
-    setkey(newSpeciesName)
-
+                        biomass = sum(origBiomass)), .(Species)] |>
+    setkey(Species)
+  
   newborn <- newborn[, .(newGrowth = sum(biomass - origBiomass) ,
-                         biomass = sum(origBiomass)),
-                     (newSpeciesName)] |>
-    setkey(newSpeciesName)
+                         biomass = sum(origBiomass)), .(Species)] |>
+    setkey(Species)
   #measure from census midpoint for new seedlings
-  dead <- dead[, .(mortality = sum(biomass) / censusLength), .(newSpeciesName)] |>
-    setkey(newSpeciesName)
+  dead <- dead[, .(mortality = sum(biomass) / censusLength), .(Species)] |>
+    setkey(Species)
 
   #Find unobserved growth and mortality.
   #Not necessary when summing by species, b/c we can't assign species for unobserved trees
@@ -526,19 +531,19 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   # totalM <- UnobservedM + observedMortality
   # totalG <- UnobservedM + observedGrowth
   
-  #TODO: try excluding the newborn, and instead only counting from when there are two measurements
   # changes <- rbind(newborn, living)
   changes <- living
 
   changes$mortality <- 0
   dead$newGrowth <- 0
   changes <- rbind(changes, dead, fill = TRUE)
-  changes[is.na(changes)] <- 0
-
+  changes[, c("newGrowth", "biomass", "mortality") := lapply(.SD, FUN = nafill, fill = 0),
+          .SDcols = c("newGrowth", "biomass", "mortality")]
+  
   changes <- changes[, .("netGrowth" = sum(newGrowth), "mortality" = sum(mortality),
                          biomass = sum(biomass, na.rm = TRUE)),
-                     by = c("newSpeciesName")]
-  changes <- changes[, .("sppLong" = newSpeciesName,
+                    .(Species)]
+  changes <- changes[, .(Species,
                          "netBiomass" = (netGrowth - mortality),
                          "biomass" = biomass,
                          "growth" = netGrowth,
@@ -555,7 +560,7 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   changes$periodLength <- censusLength
 
   changes <- meanClim[changes, on = "OrigPlotID1"]
-  setcolorder(changes, c("OrigPlotID1", "period", "species", "sppLong", "growth", "mortality", "netBiomass",
+  setcolorder(changes, c("OrigPlotID1", "period", "Species", "growth", "mortality", "netBiomass",
                          "standAge", "logAge", "plotSize", "periodLength", ClimVar))
   return(changes)
 }
@@ -617,6 +622,13 @@ sumPeriod <- function(x, m, p, clim, climVar, dbh) {
       sim$PSPclimData[, id2 := NULL]
     }
   }
+  
+  #TODO: do this manually for now until Parvin's changes materialize
+  temp <- LandR::sppEquivalencies_CA[, .(PSP, LandR)][grep("_spp", LandR, invert = TRUE)]
+  temp <- unique(temp[LandR != "" & PSP != "" & LandR != "Quer_bic",])
+  sim$PSPmeasure_gmcs <- temp[sim$PSPmeasure_gmcs, on = c("PSP" = "newSpeciesName")]
+  sim$PSPmeasure_gmcs[, Species := NULL]
+  setnames(sim$PSPmeasure_gmcs, old = c(P(sim)$sppEquivCol, "PSP"), new = c("Species", "newSpeciesName"))
 
   return(invisible(sim))
 }
