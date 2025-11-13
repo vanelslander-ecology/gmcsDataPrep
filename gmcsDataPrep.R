@@ -380,7 +380,7 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
     PSPmodelData <- anomalyData[PSPmodelData, on = c("OrigPlotID1")]
 
     #recalculate the anomaly(s) via subtraction
-    for (i in length(anomalies)) {
+    for (i in 1:length(anomalies)) {
       #index because the name isn't preserved if you take the object itself
       temp <- anomalies[i]
       setnames(PSPmodelData, c(temp, names(temp)), c("var", "anom"))
