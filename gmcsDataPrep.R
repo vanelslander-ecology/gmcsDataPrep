@@ -395,16 +395,15 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   ## Standardize by plotSize and change units from kg/ha to g/m2. = *1000 g/kg / 10000 m2/ha
   PSPmodelData <- PSPmodelData[, growth_gm2 := growth/plotSize/10] %>%
     .[, mortality_gm2 := mortality/plotSize/10] %>%
-    .[, netBiomass_gm2 := netBiomass/plotSize/10]
+    .[, netBiomassChng_gm2 := netBiomassChng/plotSize/10]
   
   # Sum species-specific mortality, growth, and net biomass by plot and year
   # growth is set to 1 if it would be 0 (to avoid model error - anyway  0 growth is measurement error)
-  browser()
   PSPmodelSum <- PSPmodelData[, .("growth" = pmax(1, sum(growth_gm2)), "mortality" = sum(mortality_gm2),
-                                  "netBiomass" = sum(netBiomass_gm2), biomass = sum(biomass)),
+                                  "netBiomass" = sum(netBiomassChng_gm2), biomass = sum(biomass)),
                               by = c("OrigPlotID1", "period", "Species")]
   
-  PSPmodelData[, c("mortality_gm2", "growth_gm2", "netBiomass_gm2", "growth", "mortality") := NULL]
+  PSPmodelData[, c("mortality_gm2", "growth_gm2", "netBiomassChng_gm2", "growth", "mortality") := NULL]
   PSPmodelData <- unique(PSPmodelData)
   subCols <- names(PSPmodelData)[!names(PSPmodelData) %in% c(names(PSPmodelSum))]
   joinCols <- setdiff(names(PSPmodelData), subCols)
@@ -421,14 +420,13 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   PSPmodelData <- unique(PSPplot[, .(OrigPlotID1, plotNumeric)])[PSPmodelData, on = c("OrigPlotID1")]
 
   setcolorder(PSPmodelData, c("OrigPlotID1", "plotNumeric", "plotSize", "year", "period", "periodLength",
-                              "standAge", "logAge", "Species", "growth", "mortality", "biomass", "netBiomass"))
+                              "standAge", "logAge", "Species", "growth", "mortality", "biomass", "netBiomassChng"))
   
   #calculate biomass as the sum of biomass by species within a plot, 
   # and scale growth by biomass 
 
   PSPmodelData[, standBiomass := sum(biomass), .(OrigPlotID1, period)]
-  browser()
-  PSPmodelData[, growth := growth/biomass]
+  PSPmodelData[, growth_over_B := growth/biomass]
   #TODO: discuss whether mortality should also be scaled
   
   #make this second column which will lump species with low representation into "other"
@@ -436,6 +434,7 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   PSPmodelData[, sppCount := .N, .(psp_spp)]
   PSPmodelData[sppCount < minSampleForSpecies, psp_spp := "otherSpp"]
   
+  PSPmodelData[, N := NULL]
   PSPmodelData[, Species := as.factor(Species)]
   PSPmodelData[, psp_spp := as.factor(psp_spp)]
   PSPmodelData[, sppCount := NULL]
@@ -452,13 +451,12 @@ gmcsModelBuild <- function(PSPmodelData, model) {
 }
 
 pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
-  #track why species becomes 0
+  
   #Calculate climate variables
   meanClim <- Clim[Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1],
                    lapply(.SD, mean), .SDcol = ClimVar, .(OrigPlotID1)]
 
   period <- paste0(P$MeasureYear[i], "-", P$MeasureYear[i + 1])
-
   m1 <- M[MeasureYear == P$MeasureYear[i]]
   m2 <- M[MeasureYear == P$MeasureYear[i + 1]]
   censusLength <- P$MeasureYear[i + 1] - P$MeasureYear[i]
@@ -477,9 +475,13 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
     #must use current age to ensure censusLength is always smaller, else multiplier is negative!
     #note: dbh in this equation is the minimum dbh threshold
     newborn_interpolated[, DBH := dbh * increment]
-    #TODO: using data.table syntax here leads to incorrect vectorization 
+    if (any(is.na(newborn_interpolated$Height))) {
+      useHeight = FALSE
+    } else {
+      useHeight = TRUE
+    }
     newborn_interpolated[, biomass := biomassCalculation(newSpeciesName, DBH, height = Height, 
-                                                         includeHeight = TRUE)$biomass, ]
+                                                         includeHeight = useHeight)$biomass, ]
     newborn[, origBiomass := newborn_interpolated$biomass]
   } else {
     newborn[, origBiomass := 0]
@@ -508,7 +510,7 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
                          biomass = sum(origBiomass)), .(Species)] |>
     setkey(Species)
   #measure from census midpoint for new seedlings
-  dead <- dead[, .(mortality = sum(biomass) / censusLength), .(Species)] |>
+  dead <- dead[, .(mortality = sum(biomass) / censusLength, biomass = sum(biomass)), .(Species)] |>
     setkey(Species)
 
   #Find unobserved growth and mortality.
@@ -536,22 +538,19 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
 
   changes$mortality <- 0
   dead$newGrowth <- 0
-  changes <- rbind(changes, dead, fill = TRUE)
+  changes <- rbind(changes, dead, newborn, fill = TRUE)
+  
+  #fill NA as zero - regen has no mortality, dead has no growth 
   changes[, c("newGrowth", "biomass", "mortality") := lapply(.SD, FUN = nafill, fill = 0),
           .SDcols = c("newGrowth", "biomass", "mortality")]
   
-  changes <- changes[, .("netGrowth" = sum(newGrowth), "mortality" = sum(mortality),
+  #sum growth mortality and biomass by species
+  changes <- changes[, .("growth" = sum(newGrowth), "mortality" = sum(mortality),
                          biomass = sum(biomass, na.rm = TRUE)),
                     .(Species)]
-  changes <- changes[, .(Species,
-                         "netBiomass" = (netGrowth - mortality),
-                         "biomass" = biomass,
-                         "growth" = netGrowth,
-                         mortality)]
-  #join up with the climate means
+  changes[, netBiomassChng := growth - mortality]
+  
   changes$period <- period
-
-
   changes$OrigPlotID1 <- P$OrigPlotID1[1]
   changes$year <- year
   changes$standAge <- P$baseSA[1] + P$MeasureYear[i + 1] - P$MeasureYear[1]
@@ -560,7 +559,7 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   changes$periodLength <- censusLength
 
   changes <- meanClim[changes, on = "OrigPlotID1"]
-  setcolorder(changes, c("OrigPlotID1", "period", "Species", "growth", "mortality", "netBiomass",
+  setcolorder(changes, c("OrigPlotID1", "period", "Species", "growth", "mortality", "netBiomassChng",
                          "standAge", "logAge", "plotSize", "periodLength", ClimVar))
   return(changes)
 }
