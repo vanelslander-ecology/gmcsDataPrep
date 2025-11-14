@@ -12,13 +12,13 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list("carat", "crayon", "data.table", "gamlss", "ggplot2", "glmm", "gpboost",
+  reqdPkgs = list("caret", "crayon", "data.table", "ggplot2", 
+                  "purrr", "pROC", "sf", "SHAPforxgboost", "xgboost",
                   "PredictiveEcology/LandR@development (>= 1.1.4)",
                   "ianmseddy/LandR.CS@development (>= 0.0.3.9000)",
-                  "MASS", "nlme",
                   "PredictiveEcology/reproducible (>= 2.1.0)",
                   "PredictiveEcology/pemisc@development (>= 0.0.3.9002)",
-                  "ianmseddy/PSPclean@development (>= 0.1.5.9002)", "sf", "xgboost"),
+                  "ianmseddy/PSPclean@development (>= 0.1.5.9002)"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("biomassModel", "character", "Lambert2005", NA, NA,
@@ -196,8 +196,28 @@ Init <- function(sim) {
       minTrees = P(sim)$minTrees) |>
       Cache(userTags = c("gmcsDataPrep", "prepModelData"))
     
+    #drop plot for purpose of plot estimation
+    browser()
+    xgbTrainData <- copy(sim$PSPmodelData)
+    #Prepare Data for XGBoost
+    anomalyVariables <- setdiff(names(P(sim)$climateVariables), "")
+    allClimVar <- c(P(sim)$climateVariables, anomalyVariables)
+    
+    #need to remove non-useful columns due to use of categorical data
+    #don't add mortality or it will be treated as a covariate 
+    newData <- xgbTrainData[, .SD, .SDcols = c("growth", allClimVar,
+                                               "biomass", "logAge", "standBiomass", "psp_spp")]
+    
+    #source("modules/gmcsDataPrep/R/xgboost_caret_flow.R")
+    runXGBOOST(dat = newData, dig = NULL,
+               eval_metric = c("rmse"),
+                colnamesResp = "growth", 
+               figDir = "outputs/figures/gmcsDataPrep")
+    
+    browser()
     ## model building
     ## only replace the models if NULL, so user can supply their own models
+    #TOOD: this will become xgboost
     if (is.null(sim$gcsModel)) {
       sim$gcsModel <- Cache(gmcsModelBuild,
                             PSPmodelData = sim$PSPmodelData,
@@ -428,6 +448,8 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   PSPmodelData[, standBiomass := sum(biomass), .(OrigPlotID1, period)]
   PSPmodelData[, growth_over_B := growth/biomass]
   #TODO: discuss whether mortality should also be scaled
+  #TODO: eat your shorts if the group says no
+  PSPmodelData[, mortality := mortality/biomass]
   
   #make this second column which will lump species with low representation into "other"
   PSPmodelData[, psp_spp := Species]
@@ -455,7 +477,7 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   #Calculate climate variables
   meanClim <- Clim[Year >= P$MeasureYear[i] & Clim$Year <= P$MeasureYear[i + 1],
                    lapply(.SD, mean), .SDcol = ClimVar, .(OrigPlotID1)]
-
+  
   period <- paste0(P$MeasureYear[i], "-", P$MeasureYear[i + 1])
   m1 <- M[MeasureYear == P$MeasureYear[i]]
   m2 <- M[MeasureYear == P$MeasureYear[i + 1]]
@@ -486,7 +508,7 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   } else {
     newborn[, origBiomass := 0]
   }
-
+  
   if (nrow(living1) != nrow(living2) | nrow(living1) == 0) {
     warning("there is a problem in the PSP data with the plots: ", unique(m1$MeasureID), " ", unique(m2$MeasureID))
     return(NULL)
@@ -496,7 +518,7 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   living2$origBiomass <- living1$biomass
   ## growth cannot be negative, by definition
   living2[biomass < origBiomass, biomass := origBiomass]
-
+  
   # TODO: there are some plots that have black spruce with different codings (e.g. BL, Bl)
   # (this is likely true for others - but only tested in BC atm)
   # These SHOULD be combined, but the way to do that is to only return the single standardized column name
@@ -512,7 +534,7 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   #measure from census midpoint for new seedlings
   dead <- dead[, .(mortality = sum(biomass) / censusLength, biomass = sum(biomass)), .(Species)] |>
     setkey(Species)
-
+  
   #Find unobserved growth and mortality.
   #Not necessary when summing by species, b/c we can't assign species for unobserved trees
   #Unobserved growth and mortality = ~1% of observed, so climate influences on this are trivial.
@@ -535,7 +557,7 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   
   # changes <- rbind(newborn, living)
   changes <- living
-
+  
   changes$mortality <- 0
   dead$newGrowth <- 0
   changes <- rbind(changes, dead, newborn, fill = TRUE)
@@ -547,7 +569,7 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   #sum growth mortality and biomass by species
   changes <- changes[, .("growth" = sum(newGrowth), "mortality" = sum(mortality),
                          biomass = sum(biomass, na.rm = TRUE)),
-                    .(Species)]
+                     .(Species)]
   changes[, netBiomassChng := growth - mortality]
   
   changes$period <- period
@@ -557,7 +579,7 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   changes$logAge <- log(changes$standAge)
   changes$plotSize <- P$PlotSize[1]
   changes$periodLength <- censusLength
-
+  
   changes <- meanClim[changes, on = "OrigPlotID1"]
   setcolorder(changes, c("OrigPlotID1", "period", "Species", "growth", "mortality", "netBiomassChng",
                          "standAge", "logAge", "plotSize", "periodLength", ClimVar))

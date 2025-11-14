@@ -1,0 +1,363 @@
+#' Wrapper for XGBoost
+#'
+#' Tune, fits and tests XGBoost models with
+#' k-fold cross-validation.
+#'
+#' @param dat a `data.table` containing predictors and response variable.
+#' @param dig a digest passed to `Cache(..., .cacheExtra)` to bypass digesting
+#'    `dat`. Often `dig` is a digest of `dat`.
+#' @param nFolds number of folds for cross-validating the final model
+#'    (i.e. the model using tuned parameters).
+#' @param colnamesResp Name of column in `dat` to use as response variable.
+#'    All other columns will be used as predictors
+#' @param interaction_constraints passed to `xgboost::xgboost`.
+#'    By default no interaction constraints.
+#' @param SHAPthresh. Quantile threshold used for feature (i.e. variable) selection
+#'    based on SHAP values. Features with SHAP values below the quantile threshold
+#'    are excluded and the model re-run. A warning is issued if this resulted in poorer
+#'    performace (based on AUC score), in which case one may consider relaxing (i.e. lowering)
+#'    the threshold.
+#' @param figDir if not `NULL`, diagnostic tuning plots will be saved to this directory.
+#'
+#' @return a list (one entry per fold) of lists with:
+#'   * `$mod`: fitted model
+#'   * `shap_values`: SHAP values for the fitted model
+#'   * `shap_long`: long version of the SHAP values for the fitted model (used for plotting)
+#' @importFrom caret createFolds
+#' @importFrom purrr pmap
+#' @importFrom pROC roc
+#' @importFrom crayon cyan
+#' @importFrom SHAPforxgboost shap.values
+#' @importFrom reproducible Cache
+runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
+                       eval_metric = c("auc", "rmse", "logloss"),
+                       interaction_constraints = NULL, SHAPthresh = 0,
+                       figDir = NULL) {
+  # dat <- dat[sample(NROW(dat), size = 1e4)]
+  # tt <- table(dat$SEV_PROP)
+  
+  # Add dummy variables for factor columns -- i.e., the random effects
+  if (all(sapply(dat, is.numeric)) %in% FALSE)
+    dat <- model.matrix(~ . + 0, data = dat) #|>
+      # Cache(omitArgs = c("object", "data", "x"),
+      #       .cacheExtra = dig) # Creates dummy variables
+  
+  dat <- as.data.table(dat)
+  
+  colnamesPred <- setdiff(colnames(dat), colnamesResp) ## after model.matrix bcs colnames change
+  
+  ## Setup k-folds -----
+  savedSeed <- .Random.seed
+  on.exit(assign(".Random.seed", savedSeed, envir = .GlobalEnv), add = TRUE)
+  set.seed(12345) # so kfolds are same, so Caching works correctly below; if dat changes number of rows,
+  # it will be a totally different sequence; but it will be the same sequence
+  # if number of rows doesn't change
+  
+  yearColname <- grep("year", tolower(colnames(dat)), value = TRUE)
+  indexNames <- c("allData", "evalData")
+  
+  if (length(yearColname)) {
+    crossValType <- "time-ordered"
+    times <- unique(dat[[yearColname]])
+    testLength <- 3
+    initialWindow <- length(times) - testLength - nFolds + 1
+    trainIndexK <- createTimeSlices(times, initialWindow = initialWindow, testLength, fixedWindow = FALSE)
+    trainIndexK <- Map(tr = trainIndexK$train, te = trainIndexK$test, function(tr, te) {
+      allData <- which(dat[[yearColname]] %in% times[c(tr, te)])
+      evalData <- which(dat[[yearColname]] %in% times[te])
+      list(allData, evalData) |> setNames(indexNames)
+    })
+  } else {
+    crossValType <- "crossValidation"
+    ## create folds and make a list with indices of full dataset and eahc fold
+    trainIndexK <- createFolds(dat[[colnamesResp]], k = nFolds, list = TRUE, returnTrain = FALSE)
+    trainIndexK <- Map(tr = trainIndexK, function(tr) {
+      list(seq(NROW(dat)), tr) |> setNames(indexNames)
+    })
+  }
+  
+  ## sample columns after setting seed for caching (if different, then cache is triggered)
+  colOrder <- setdiff(colnames(dat), c(yearColname))
+  colOrder <- sample(colOrder)
+  dat <- dat[, ..colOrder]
+  dig <- .robustDigest(dat)
+  
+  ## Tune parameters on full data with caret first ----
+  params <- .tunexgboost(dig,
+                         dat[, .SD, .SDcols = c(colnamesPred, colnamesResp)],
+                         colnamesResp = colnamesResp,
+                         figDir) #|>
+    # Cache(omitArgs = c("dat", "figDir")
+    # )
+  
+  ## subset predictor data
+  datPreds <- dat[, ..colnamesPred]
+  
+  st <- system.time(
+    mm <- pmap(
+      list(dataFolds = trainIndexK, kFold = seq(nFolds)),
+      function(dataFolds, kFold) {
+        ## get row IDs for training data (allData) and testing data
+        allDataIDs <- dataFolds[[indexNames[[1]]]]
+        testIDs <- dataFolds[[indexNames[[2]]]]   ## eval data
+        dig2 <- .robustDigest(dataFolds)
+        
+        # xgboost objects do not save with `qs` ... must be `rds`
+        # opt <- options(reproducible.cacheSaveFormat = "rds")
+        # on.exit(options(opt)) # redundant; but necessary if it fails during fit
+        lowSHAPcols <- 1
+        calcThresh <- TRUE
+        # SHAPthresh <- 0.25  ## test
+        cols2keep <- colnames(datPreds)
+        
+        modOut <- NULL
+        
+        while (length(lowSHAPcols)) {
+          ## TODO: test: go back to previous model if AUC decreases after removing features
+          modOut2 <- xgboost(x = datPreds[allDataIDs],
+                             , y = dat[[colnamesResp]][allDataIDs]
+                             , interaction_constraints = interaction_constraints
+                             # , objective = "reg:tweedie" ## no improvements
+                             , nthread = 10
+                             , eval_set = testIDs,
+                             , monitor_training = TRUE
+                             , eval_metric = eval_metric,
+                             , early_stopping_rounds = 100
+                             , max_depth = params$max_depth   ## improved fit.
+                             , nrounds = params$nrounds
+                             , learning_rate = params$eta
+                             , min_split_loss = params$gamma
+                             , min_child_weight = params$min_child_weight
+                             , colsample_bytree = params$colsample_bytree
+          )
+          
+          if (is.null(modOut)) {
+            modOut <- modOut2
+            RMSEout <- tail(attr(modOut, "evaluation_log"), 1)$train_rmse
+          }
+          browser()
+          ## get last AUC
+          RMSEout2 <- tail(attr(modOut2, "evaluation_log"), 1)$train_rmse
+          if (RMSEout2 < RMSEout) {
+            message("AUC decreased after removing features.\n",
+                    "  The previous model will be retained, instead")
+          } else {
+            modOut <- modOut2
+          }
+          RMSEout <- RMSEout2
+          
+          ## calculate predictions and residuals
+          valData <- datPreds[testIDs,]
+          valData <- cbind(valData,
+                           obs =  dat[[colnamesResp]][testIDs],
+                           pred = predict(modOut, datPreds[testIDs, ]))
+          valData[, resid := pred - obs]
+          
+          ## Feature selection -- remove features (variables) with low SHAP values
+          ## based on a quantile threshold
+          browser()
+          shap_values <- shap.values(modOut, datPreds) #|>
+            # Cache(omitArgs = formalArgs(shap.values),
+            #       .functionName = .functionNameHelper("shap.values", "xgboost", kFold),
+            #       .cacheExtra = c(dig, dig2, cols2keep))
+          meanSHAP <- shap_values$mean_shap_score
+          
+          if (calcThresh) {
+            SHAPthresh <- quantile(meanSHAP, prob = SHAPthresh)
+            calcThresh <- FALSE ## we only calculate the threshold once
+          }
+          
+          lowSHAPcols <- names(which(meanSHAP < SHAPthresh))
+          if (length(lowSHAPcols)) {
+            cols2keep <- setdiff(colnames(datPreds), lowSHAPcols)
+            datPreds <- datPreds[, ..cols2keep]
+            
+            message("Removing features with SHAP < ", SHAPthresh, ":\n",
+                    paste(lowSHAPcols, collapse = ", "))
+          }
+          
+        }
+        
+        ## more outputs
+        shapContrib <- shap_values$shap_score
+        shapContrib <- shapContrib[, -"(Intercept)"]
+        shap_long <- shap.prep(shap_contrib = shapContrib, X_train = datPreds) #|>
+          # Cache(omitArgs = formalArgs(shap.prep),
+          #       .functionName = .functionNameHelper("shap.prep", kFold),
+          #       .cacheExtra = c(dig, dig2, cols2keep))
+        
+        list(valData = valData,
+             mod = modOut,
+             shap_values = shap_values,
+             shap_long = shap_long)
+      })
+  )
+  
+  return(mm)
+}
+
+#' Tune XGBoost parameters with `caret`
+#'
+#' Tuning is done in 3 steps.
+#' Step 1. Tune learning rate (called `learning_rate` in `xgboost`
+#' and `eta` in `caret`)
+#' Step 2. Take the best learning rate and tune all other parameters
+#' (from those passed to `xgboost` by `[caret::train()]`) except
+#' `rnounds` and `sample` (which is always kept as 1).
+#' Step 3. Take the best parameters values from Steps 1 and 2 and tune
+#' `nrounds`.
+#'
+#' @returns a data.frame of best parameter values.
+#'
+#' @inheritParams runXGBOOST
+#' @importFrom caret trainControl train caretTheme
+#' @importFrom reproducible Cache
+#' @importFrom lattice trellis.par.set
+.tunexgboost <- function(dig, dat, colnamesResp, figDir) {
+  ## use devtools::load_all("C:/Users/cbarros/GitHub/caret/pkg/caret/")
+  ## bug reported at: https://github.com/topepo/caret/issues/1412
+  savePlot <- FALSE
+  if (!is.null(figDir)) {
+    dir.create(figDir, showWarnings = FALSE, recursive = TRUE)
+    savePlot <- TRUE
+  }
+  
+  colnamesPred <- setdiff(colnames(dat), colnamesResp)
+  
+  ## Step 1. tune learning rate.
+  ## eta = learning rate.
+  param_grid1 <- data.frame(nrounds = 300,
+                            eta = seq(0.01, 0.2, by =  0.005),
+                            ## defaults in xgboost:
+                            max_depth = 6,
+                            gamma = 0,
+                            colsample_bytree = 1,
+                            min_child_weight = 1,
+                            subsample = 1)
+  
+  xgb_trcontrol <- trainControl(
+    method = "cv",
+    number = 5,
+    verboseIter = TRUE,
+    returnData = FALSE,
+    returnResamp = "final",
+    allowParallel = TRUE,
+    savePredictions = "final"
+  )
+  message(cyan("Tuning learning rate..."))
+  st <- system.time(
+    {
+      xgb_tuned <- train(x = as.data.frame(dat[, ..colnamesPred]),
+                         y = dat[[colnamesResp]],
+                         trControl = xgb_trcontrol,
+                         tuneGrid = param_grid1,
+                         method = "xgbTree"
+      ) #|>
+        # Cache(omitArgs = c("x", "y"),
+        #       .functionName = .functionNameHelper("train", "tune_learningrate"),
+        #       .cacheExtra = c(dig),
+        #       showSimilar = TRUE,
+        #       ## cacheId = "8a518e3d96830586",
+        #       cacheSaveFormat = "rds")
+    }
+  )
+  
+  paramsF <- xgb_tuned$bestTune
+  message(cyan("Finished in", st[["elapsed"]], "sec."))
+  
+  ## save tuning output
+  if (savePlot) {
+    png(file.path(figDir, "tuning_learningRate.png"), height = 4, width = 6,
+        units = "in", res = 300)
+    trellis.par.set(caretTheme())
+    print(plot(xgb_tuned))
+    dev.off()
+  }
+  
+  ## Step 2. fix best learning rate and vary the rest
+  param_grid2 <- expand.grid(nrounds = 200,
+                             max_depth = c(1:10),
+                             eta = paramsF$eta,
+                             gamma = c(0, 0.1, 1, 2),#, 5, 10), ## tested with more initially, but not necessary
+                             colsample_bytree = c(0.1, 0.5, 1),
+                             min_child_weight = c(0, 1, 2, 5),
+                             subsample = 1)
+  
+  ## tune other parameters
+  for (i in 1:3) gc(reset = TRUE)
+  message(cyan("Tuning remaining XGBoost parameters..."))
+  st <- system.time(
+    {
+      xgb_tuned <- train(x = as.data.frame(dat[, ..colnamesPred]),
+                         y = dat[[colnamesResp]],
+                         trControl = xgb_trcontrol,
+                         tuneGrid = param_grid2,
+                         method = "xgbTree"
+      ) #|>
+      #     Cache(omitArgs = c("x", "y"),
+      #           .functionName = .functionNameHelper("train", "tune_all"),
+      #           .cacheExtra = c(dig),
+      #           showSimilar = TRUE,
+      #           ## cacheId = "d76ffa84709d8db0",
+      #           cacheSaveFormat = "rds")
+    }
+  )
+  
+  paramsF <- xgb_tuned$bestTune
+  message(cyan("Finished in", st[["elapsed"]], "sec."))   ## about 4hrs
+  
+  ## save tuning output
+  if (savePlot) {
+    png(file.path(figDir, "tuning_all.png"), height = 12, width = 12,
+        units = "in", res = 300)
+    trellis.par.set(caretTheme())
+    print(plot(xgb_tuned))
+    dev.off()
+  }
+  
+  ## Step 3. vary only no. rounds
+  param_grid3 <- expand.grid(nrounds = c(100, 200, 500, 1000, 1500, 2000),
+                             max_depth = paramsF$max_depth,
+                             eta = paramsF$eta,
+                             gamma = paramsF$gamma,
+                             colsample_bytree = paramsF$colsample_bytree,
+                             min_child_weight = paramsF$min_child_weight,
+                             subsample = 1)
+  
+  ## tune other parameters
+  for (i in 1:3) gc(reset = TRUE)
+  message(cyan("Tuning no. rounds (trees)..."))
+  st <- system.time(
+    {
+      xgb_tuned <- train(x = as.data.frame(dat[, ..colnamesPred]),
+                         y = dat[[colnamesResp]],
+                         trControl = xgb_trcontrol,
+                         tuneGrid = param_grid3,
+                         method = "xgbTree"
+      ) #|>
+      # Cache(omitArgs = c("x", "y"),
+      #       .functionName = .functionNameHelper("train", "tune_nrounds"),
+      #       .cacheExtra = c(dig),
+      #       showSimilar = TRUE,
+      #       ## cacheId = "42d9114a51b67432",
+      #       cacheSaveFormat = "rds")
+    }
+  )
+  
+  paramsF <- xgb_tuned$bestTune
+  message(cyan("Finished in", st[["elapsed"]], "sec."))
+  message(cyan("Best parameters:"))
+  message(cyan(paste0(capture.output(paramsF), collapse = "\n")))
+  
+  ## save tuning output
+  if (savePlot) {
+    png(file.path(figDir, "tuning_nrounds.png"), height = 4, width = 6,
+        units = "in", res = 300)
+    trellis.par.set(caretTheme())
+    print(plot(xgb_tuned))
+    dev.off()
+  }
+  
+  for (i in 1:3) gc(reset = TRUE)
+  return(paramsF)
+}
