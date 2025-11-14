@@ -38,9 +38,9 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
   
   # Add dummy variables for factor columns -- i.e., the random effects
   if (all(sapply(dat, is.numeric)) %in% FALSE)
-    dat <- model.matrix(~ . + 0, data = dat) #|>
-      # Cache(omitArgs = c("object", "data", "x"),
-      #       .cacheExtra = dig) # Creates dummy variables
+    dat <- model.matrix(~ . + 0, data = dat) |>
+      Cache(omitArgs = c("object", "data", "x"),
+            .cacheExtra = dig) # Creates dummy variables
   
   dat <- as.data.table(dat)
   
@@ -87,9 +87,9 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                          dat[, .SD, .SDcols = c(colnamesPred, colnamesResp)],
                          colnamesResp = colnamesResp,
                          figDir) #|>
-    # Cache(omitArgs = c("dat", "figDir")
-    # )
-  
+    Cache(omitArgs = c("dat", "figDir")
+    )
+
   ## subset predictor data
   datPreds <- dat[, ..colnamesPred]
   
@@ -157,9 +157,9 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
           ## based on a quantile threshold
           browser()
           shap_values <- shap.values(modOut, datPreds) #|>
-            # Cache(omitArgs = formalArgs(shap.values),
-            #       .functionName = .functionNameHelper("shap.values", "xgboost", kFold),
-            #       .cacheExtra = c(dig, dig2, cols2keep))
+            Cache(omitArgs = formalArgs(shap.values),
+                  .functionName = .functionNameHelper("shap.values", "xgboost", kFold),
+                  .cacheExtra = c(dig, dig2, cols2keep))
           meanSHAP <- shap_values$mean_shap_score
           
           if (calcThresh) {
@@ -182,10 +182,10 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
         shapContrib <- shap_values$shap_score
         shapContrib <- shapContrib[, -"(Intercept)"]
         shap_long <- shap.prep(shap_contrib = shapContrib, X_train = datPreds) #|>
-          # Cache(omitArgs = formalArgs(shap.prep),
-          #       .functionName = .functionNameHelper("shap.prep", kFold),
-          #       .cacheExtra = c(dig, dig2, cols2keep))
-        
+          Cache(omitArgs = formalArgs(shap.prep),
+                .functionName = .functionNameHelper("shap.prep", kFold),
+                .cacheExtra = c(dig, dig2, cols2keep))
+
         list(valData = valData,
              mod = modOut,
              shap_values = shap_values,
@@ -252,13 +252,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                          trControl = xgb_trcontrol,
                          tuneGrid = param_grid1,
                          method = "xgbTree"
-      ) #|>
-        # Cache(omitArgs = c("x", "y"),
-        #       .functionName = .functionNameHelper("train", "tune_learningrate"),
-        #       .cacheExtra = c(dig),
-        #       showSimilar = TRUE,
-        #       ## cacheId = "8a518e3d96830586",
-        #       cacheSaveFormat = "rds")
+      ) 
     }
   )
   
@@ -293,13 +287,13 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                          trControl = xgb_trcontrol,
                          tuneGrid = param_grid2,
                          method = "xgbTree"
-      ) #|>
-      #     Cache(omitArgs = c("x", "y"),
-      #           .functionName = .functionNameHelper("train", "tune_all"),
-      #           .cacheExtra = c(dig),
-      #           showSimilar = TRUE,
-      #           ## cacheId = "d76ffa84709d8db0",
-      #           cacheSaveFormat = "rds")
+      ) |>
+        Cache(omitArgs = c("x", "y"),
+              .functionName = .functionNameHelper("train", "tune_all"),
+              .cacheExtra = c(dig),
+              showSimilar = TRUE,
+              ## cacheId = "d76ffa84709d8db0",
+              cacheSaveFormat = "rds")
     }
   )
   
@@ -334,13 +328,13 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                          trControl = xgb_trcontrol,
                          tuneGrid = param_grid3,
                          method = "xgbTree"
-      ) #|>
-      # Cache(omitArgs = c("x", "y"),
-      #       .functionName = .functionNameHelper("train", "tune_nrounds"),
-      #       .cacheExtra = c(dig),
-      #       showSimilar = TRUE,
-      #       ## cacheId = "42d9114a51b67432",
-      #       cacheSaveFormat = "rds")
+      ) |>
+        Cache(omitArgs = c("x", "y"),
+              .functionName = .functionNameHelper("train", "tune_nrounds"),
+              .cacheExtra = c(dig),
+              showSimilar = TRUE,
+              ## cacheId = "42d9114a51b67432",
+              cacheSaveFormat = "rds")
     }
   )
   
@@ -360,4 +354,8 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
   
   for (i in 1:3) gc(reset = TRUE)
   return(paramsF)
+}
+
+.functionNameHelper <- function(..., sep = "_") {
+  paste(..., sep = sep)
 }
