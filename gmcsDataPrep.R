@@ -12,7 +12,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list("caret", "crayon", "data.table", "ggplot2", 
+  reqdPkgs = list("crayon", "data.table", "ggplot2", 
                   "purrr", "pROC", "sf", "SHAPforxgboost", "xgboost",
                   "PredictiveEcology/LandR@development (>= 1.1.4)",
                   "ianmseddy/LandR.CS@development (>= 0.0.3.9000)",

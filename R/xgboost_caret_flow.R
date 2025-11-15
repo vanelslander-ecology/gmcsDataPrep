@@ -12,6 +12,7 @@
 #'    All other columns will be used as predictors
 #' @param interaction_constraints passed to `xgboost::xgboost`.
 #'    By default no interaction constraints.
+#' @param eval_metric the metric by which to evaluate fit. 
 #' @param SHAPthresh. Quantile threshold used for feature (i.e. variable) selection
 #'    based on SHAP values. Features with SHAP values below the quantile threshold
 #'    are excluded and the model re-run. A warning is issued if this resulted in poorer
@@ -33,9 +34,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                        eval_metric = c("auc", "rmse", "logloss"),
                        interaction_constraints = NULL, SHAPthresh = 0,
                        figDir = NULL) {
-  # dat <- dat[sample(NROW(dat), size = 1e4)]
-  # tt <- table(dat$SEV_PROP)
-  
+
   # Add dummy variables for factor columns -- i.e., the random effects
   if (all(sapply(dat, is.numeric)) %in% FALSE)
     dat <- model.matrix(~ . + 0, data = dat) |>
@@ -82,12 +81,12 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
   dat <- dat[, ..colOrder]
   dig <- .robustDigest(dat)
   
+  browser()
   ## Tune parameters on full data with caret first ----
   params <- .tunexgboost(dig,
                          dat[, .SD, .SDcols = c(colnamesPred, colnamesResp)],
                          colnamesResp = colnamesResp,
-                         figDir) #|>
-    Cache(omitArgs = c("dat", "figDir")
+                         figDir) 
     )
 
   ## subset predictor data
@@ -111,7 +110,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
         cols2keep <- colnames(datPreds)
         
         modOut <- NULL
-        
+        browser()
         while (length(lowSHAPcols)) {
           ## TODO: test: go back to previous model if AUC decreases after removing features
           modOut2 <- xgboost(x = datPreds[allDataIDs],
@@ -247,11 +246,13 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
   message(cyan("Tuning learning rate..."))
   st <- system.time(
     {
-      xgb_tuned <- train(x = as.data.frame(dat[, ..colnamesPred]),
-                         y = dat[[colnamesResp]],
-                         trControl = xgb_trcontrol,
-                         tuneGrid = param_grid1,
-                         method = "xgbTree"
+      xgb_tuned <- caret::train(
+        dat[[colnamesResp]] ~ .,
+        data = as.data.frame(dat[, ..colnamesPred]),
+        trControl = xgb_trcontrol,
+        tuneGrid = param_grid1,
+        
+        method = "xgbTree"
       ) 
     }
   )
