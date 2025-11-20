@@ -12,13 +12,16 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list("crayon", "data.table", "ggplot2", 
-                  "purrr", "pROC", "sf", "SHAPforxgboost", "xgboost",
+  reqdPkgs = list("caret (>= 7.0.2.9001)", #install from ceresbarros/caret/pkg/caret 
+                  "crayon", "data.table", "ggplot2", 
+                  "purrr", "pROC", "sf", "xgboost (>= 3.0.5.1)",
+                  #maybe install.packages('xgboost', repos = c('https://dmlc.r-universe.dev', 'https://cloud.r-project.org'))
                   "PredictiveEcology/LandR@development (>= 1.1.4)",
                   "ianmseddy/LandR.CS@development (>= 0.0.3.9000)",
                   "PredictiveEcology/reproducible (>= 2.1.0)",
                   "PredictiveEcology/pemisc@development (>= 0.0.3.9002)",
-                  "ianmseddy/PSPclean@development (>= 0.1.5.9002)"),
+                  "ianmseddy/PSPclean@development (>= 0.1.5.9002)", 
+                  "PredictiveEcology/SHAPforxgboost (>= 0.1.3.9001)"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("biomassModel", "character", "Lambert2005", NA, NA,
@@ -95,7 +98,7 @@ defineModule(sim, list(
     defineParameter("useHeight", "logical", TRUE, NA, NA,
                     desc = paste("Use height be used to calculate biomass (in addition to DBH). If height is NA for individual",
                                  "trees, then only DBH will be used for those measurements")),
-    defineParameter("validationProportion", "numeric", 0.20, 0, 1,
+    defineParameter("validationProportion", "numeric", 0.05, 0, 1,
                     desc = "proportion of data to use in validation set. Will be overridden by `PSPvalidationPeriod`."),
     defineParameter(".useCache", "character", ".inputObjects", NA, NA,
                     desc = paste("Should this entire module be run with caching activated?",
@@ -196,39 +199,74 @@ Init <- function(sim) {
       minTrees = P(sim)$minTrees) |>
       Cache(userTags = c("gmcsDataPrep", "prepModelData"))
     
-    #drop plot for purpose of plot estimation
-    browser()
-    xgbTrainData <- copy(sim$PSPmodelData)
+    PSPmodelData <- sim$PSPmodelData
+    #TODO: set aside some for validation - unclear if necessary
+
     #Prepare Data for XGBoost
     anomalyVariables <- setdiff(names(P(sim)$climateVariables), "")
     allClimVar <- c(P(sim)$climateVariables, anomalyVariables)
     
     #need to remove non-useful columns due to use of categorical data
     #don't add mortality or it will be treated as a covariate 
-    newData <- xgbTrainData[, .SD, .SDcols = c("growth", allClimVar,
-                                               "biomass", "logAge", "standBiomass", "psp_spp")]
+    PSPmodelData <- PSPmodelData[, .SD, 
+                                 .SDcols = c("growth", "mortality", allClimVar,
+                                             "biomass", "logAge", "standBiomass", "spp")]
     
-    #source("modules/gmcsDataPrep/R/xgboost_caret_flow.R")
-    runXGBOOST(dat = newData, dig = NULL,
-               eval_metric = c("rmse"),
-                colnamesResp = "growth", 
-               figDir = "outputs/figures/gmcsDataPrep")
+    # Add dummy variables for factor columns -- i.e., the random effects
+    if (all(sapply(PSPmodelData, is.numeric)) %in% FALSE)
+      PSPmodelData <- model.matrix(~ . + 0, data = PSPmodelData)
+    PSPmodelData <- as.data.table(PSPmodelData)
+
+    colnamesPred <- setdiff(colnames(PSPmodelData), "growth") ## after model.matrix bcs colnames change
     
-    browser()
+    validNums <- sample(nrow(sim$PSPmodelData), 
+                        size = round(nrow(sim$PSPmodelData) * P(sim)$validationProportion), 
+                        replace=  FALSE)
+    xgbTrainData <- PSPmodelData[-validNums]
+    
+
+    
+    validationData <- sim$PSPmodelData[validNums] 
+    
+    
+   shaps <- lapply(growthMod_kfold, FUN = function(x){x$shap_values$mean_shap_score})
+   
+    
+
     ## model building
     ## only replace the models if NULL, so user can supply their own models
-    #TOOD: this will become xgboost
-    if (is.null(sim$gcsModel)) {
-      sim$gcsModel <- Cache(gmcsModelBuild,
-                            PSPmodelData = sim$PSPmodelData,
-                            model = P(sim)$growthModel,
-                            userTags = c("gcsModel"))
-    }
+     if (is.null(sim$gcsModel)) {
+       
+       #drop mortality from growth - and vice versa
+       xgbTrainData_g <- copy(xgbTrainData)
+       xgbTrainData_g[, , mortality := NULL]
+       
+       #hyperparameter tuning and kfold cross validation
+       browser()
+       sim$gcsModel <- runXGBOOST(dat = xgbTrainData_g, dig = NULL,
+                                     nFolds = 5,
+                                     eval_metric = c("rmse"),
+                                     colnamesResp = "growth", 
+                                     figDir = "outputs/figures/gmcsDataPrep", 
+                                     cachePath = cachePath(sim)) |>
+         Cache()
+       rm(xgbTrainData_g)
+     }
+   
     if (is.null(sim$mcsModel)) {
-      sim$mcsModel <- Cache(gmcsModelBuild,
-                            PSPmodelData = sim$PSPmodelData,
-                            model = P(sim)$mortalityModel,
-                            userTags = c("mcsModel"))
+      
+      #drop mortality from growth - and vice versa
+      xgbTrainData_m <- copy(xgbTrainData)
+      xgbTrainData_m[, growth := NULL]
+      
+      #hyperparameter tuning and kfold cross validation
+      sim$mcsModel <- runXGBOOST(dat = xgbTrainData_m, dig = NULL,
+                                 nFolds = 5,
+                                 eval_metric = c("rmse"),
+                                 colnamesResp = "mortality", 
+                                 figDir = "outputs/figures/gmcsDataPrep", 
+                                 cachePath = cachePath(sim)) |>
+        Cache()
     }
 
     nullGrowthModel <- Cache(gmcsModelBuild,
@@ -447,18 +485,17 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
 
   PSPmodelData[, standBiomass := sum(biomass), .(OrigPlotID1, period)]
   PSPmodelData[, growth_over_B := growth/biomass]
-  #TODO: discuss whether mortality should also be scaled
-  #TODO: eat your shorts if the group says no
-  PSPmodelData[, mortality := mortality/biomass]
+  PSPmodelData[, mortality_over_B := mortality/biomass]
   
+  #TODO: spp should probably join with sppEquiv at some point - maybe here?
   #make this second column which will lump species with low representation into "other"
-  PSPmodelData[, psp_spp := Species]
-  PSPmodelData[, sppCount := .N, .(psp_spp)]
-  PSPmodelData[sppCount < minSampleForSpecies, psp_spp := "otherSpp"]
+  PSPmodelData[, spp := Species]
+  PSPmodelData[, sppCount := .N, .(spp)]
+  PSPmodelData[sppCount < minSampleForSpecies, spp := "otherSpp"]
   
   PSPmodelData[, N := NULL]
   PSPmodelData[, Species := as.factor(Species)]
-  PSPmodelData[, psp_spp := as.factor(psp_spp)]
+  PSPmodelData[, spp := as.factor(spp)]
   PSPmodelData[, sppCount := NULL]
   
   return(PSPmodelData)

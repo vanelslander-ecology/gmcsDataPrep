@@ -19,6 +19,7 @@
 #'    performace (based on AUC score), in which case one may consider relaxing (i.e. lowering)
 #'    the threshold.
 #' @param figDir if not `NULL`, diagnostic tuning plots will be saved to this directory.
+#' @param cachePath directory to cache results - likely cachePath(sim) if running inside a simulation
 #'
 #' @return a list (one entry per fold) of lists with:
 #'   * `$mod`: fitted model
@@ -33,12 +34,13 @@
 runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                        eval_metric = c("auc", "rmse", "logloss"),
                        interaction_constraints = NULL, SHAPthresh = 0,
-                       figDir = NULL) {
+                       figDir = NULL, 
+                       cachePath = NULL) {
 
   # Add dummy variables for factor columns -- i.e., the random effects
   if (all(sapply(dat, is.numeric)) %in% FALSE)
     dat <- model.matrix(~ . + 0, data = dat) |>
-      Cache(omitArgs = c("object", "data", "x"),
+      Cache(cachePath = cachePath, omitArgs = c("object", "data", "x"),
             .cacheExtra = dig) # Creates dummy variables
   
   dat <- as.data.table(dat)
@@ -68,7 +70,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
     })
   } else {
     crossValType <- "crossValidation"
-    ## create folds and make a list with indices of full dataset and eahc fold
+    ## create folds and make a list with indices of full dataset and each fold
     trainIndexK <- createFolds(dat[[colnamesResp]], k = nFolds, list = TRUE, returnTrain = FALSE)
     trainIndexK <- Map(tr = trainIndexK, function(tr) {
       list(seq(NROW(dat)), tr) |> setNames(indexNames)
@@ -81,13 +83,13 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
   dat <- dat[, ..colOrder]
   dig <- .robustDigest(dat)
   
-  browser()
   ## Tune parameters on full data with caret first ----
   params <- .tunexgboost(dig,
                          dat[, .SD, .SDcols = c(colnamesPred, colnamesResp)],
                          colnamesResp = colnamesResp,
-                         figDir) 
-    )
+                         figDir, 
+                         cachePath = cachePath) |>
+    Cache(cachePath = cachePath)
 
   ## subset predictor data
   datPreds <- dat[, ..colnamesPred]
@@ -110,7 +112,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
         cols2keep <- colnames(datPreds)
         
         modOut <- NULL
-        browser()
+
         while (length(lowSHAPcols)) {
           ## TODO: test: go back to previous model if AUC decreases after removing features
           modOut2 <- xgboost(x = datPreds[allDataIDs],
@@ -134,8 +136,8 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
             modOut <- modOut2
             RMSEout <- tail(attr(modOut, "evaluation_log"), 1)$train_rmse
           }
-          browser()
-          ## get last AUC
+
+          ## get last RMSE
           RMSEout2 <- tail(attr(modOut2, "evaluation_log"), 1)$train_rmse
           if (RMSEout2 < RMSEout) {
             message("AUC decreased after removing features.\n",
@@ -154,9 +156,9 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
           
           ## Feature selection -- remove features (variables) with low SHAP values
           ## based on a quantile threshold
-          browser()
-          shap_values <- shap.values(modOut, datPreds) #|>
-            Cache(omitArgs = formalArgs(shap.values),
+          shap_values <- shap.values(modOut, datPreds) |>
+            Cache(cachePath = cachePath, 
+                  omitArgs = formalArgs(shap.values),
                   .functionName = .functionNameHelper("shap.values", "xgboost", kFold),
                   .cacheExtra = c(dig, dig2, cols2keep))
           meanSHAP <- shap_values$mean_shap_score
@@ -180,8 +182,9 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
         ## more outputs
         shapContrib <- shap_values$shap_score
         shapContrib <- shapContrib[, -"(Intercept)"]
-        shap_long <- shap.prep(shap_contrib = shapContrib, X_train = datPreds) #|>
-          Cache(omitArgs = formalArgs(shap.prep),
+        shap_long <- shap.prep(shap_contrib = shapContrib, X_train = datPreds) |>
+          Cache(cachePath = cachePath,
+                omitArgs = formalArgs(shap.prep),
                 .functionName = .functionNameHelper("shap.prep", kFold),
                 .cacheExtra = c(dig, dig2, cols2keep))
 
@@ -212,7 +215,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
 #' @importFrom caret trainControl train caretTheme
 #' @importFrom reproducible Cache
 #' @importFrom lattice trellis.par.set
-.tunexgboost <- function(dig, dat, colnamesResp, figDir) {
+.tunexgboost <- function(dig, dat, colnamesResp, figDir, cachePath) {
   ## use devtools::load_all("C:/Users/cbarros/GitHub/caret/pkg/caret/")
   ## bug reported at: https://github.com/topepo/caret/issues/1412
   savePlot <- FALSE
@@ -262,7 +265,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
   
   ## save tuning output
   if (savePlot) {
-    png(file.path(figDir, "tuning_learningRate.png"), height = 4, width = 6,
+    png(file.path(figDir, paste0(colnamesResp, "_tuning_learningRate.png")), height = 4, width = 6,
         units = "in", res = 300)
     trellis.par.set(caretTheme())
     print(plot(xgb_tuned))
@@ -281,6 +284,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
   ## tune other parameters
   for (i in 1:3) gc(reset = TRUE)
   message(cyan("Tuning remaining XGBoost parameters..."))
+
   st <- system.time(
     {
       xgb_tuned <- train(x = as.data.frame(dat[, ..colnamesPred]),
@@ -288,13 +292,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                          trControl = xgb_trcontrol,
                          tuneGrid = param_grid2,
                          method = "xgbTree"
-      ) |>
-        Cache(omitArgs = c("x", "y"),
-              .functionName = .functionNameHelper("train", "tune_all"),
-              .cacheExtra = c(dig),
-              showSimilar = TRUE,
-              ## cacheId = "d76ffa84709d8db0",
-              cacheSaveFormat = "rds")
+      )
     }
   )
   
@@ -303,7 +301,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
   
   ## save tuning output
   if (savePlot) {
-    png(file.path(figDir, "tuning_all.png"), height = 12, width = 12,
+    png(file.path(figDir, paste0(colnamesResp, "_tuning_all.png")), height = 12, width = 12,
         units = "in", res = 300)
     trellis.par.set(caretTheme())
     print(plot(xgb_tuned))
@@ -329,13 +327,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                          trControl = xgb_trcontrol,
                          tuneGrid = param_grid3,
                          method = "xgbTree"
-      ) |>
-        Cache(omitArgs = c("x", "y"),
-              .functionName = .functionNameHelper("train", "tune_nrounds"),
-              .cacheExtra = c(dig),
-              showSimilar = TRUE,
-              ## cacheId = "42d9114a51b67432",
-              cacheSaveFormat = "rds")
+      )
     }
   )
   
@@ -346,7 +338,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
   
   ## save tuning output
   if (savePlot) {
-    png(file.path(figDir, "tuning_nrounds.png"), height = 4, width = 6,
+    png(file.path(figDir, paste0(colnamesResp, "_tuning_nrounds.png")), height = 4, width = 6,
         units = "in", res = 300)
     trellis.par.set(caretTheme())
     print(plot(xgb_tuned))
@@ -360,3 +352,10 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
 .functionNameHelper <- function(..., sep = "_") {
   paste(..., sep = sep)
 }
+
+# shap.plot.dependence(data_long = growthMod_kfold$Fold1$shap_long,
+#                      x = 'psp_sppPinu_con',
+#                      y = 'MAT',
+#                      dilute = 0) +
+#   ggtitle("SHAP for pine | DD_O")
+

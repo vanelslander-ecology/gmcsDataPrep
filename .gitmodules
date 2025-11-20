@@ -1,0 +1,3 @@
+[submodule "pkgs/caret"]
+	path = pkgs/caret
+	url = git@github.com:CeresBarros/caret
