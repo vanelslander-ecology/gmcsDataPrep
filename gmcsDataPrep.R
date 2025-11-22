@@ -12,7 +12,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list("caret (>= 7.0.2.9001)", #install from ceresbarros/caret/pkg/caret 
+  reqdPkgs = list("caret (>= 7.0.2.9001)", #clone ceresbarros/caret/pkg/caret or load from the submodule
                   "crayon", "data.table", "ggplot2", 
                   "purrr", "pROC", "sf", "xgboost (>= 3.0.5.1)",
                   #maybe install.packages('xgboost', repos = c('https://dmlc.r-universe.dev', 'https://cloud.r-project.org'))
@@ -57,7 +57,7 @@ defineModule(sim, list(
                                  "This is prior to filtering by minimum DBH.",
                                  "This may not be suitable for every use case.
                                  The default is 30, based on the GCB paper <doi: 10.1111/gcb.12994>.")),
-    defineParameter("minSampleForSpecies", "numeric", 80, 0, NA, 
+    defineParameter("minSampleForSpecies", "numeric", 1000, 0, NA, 
                     desc = paste("the minimum number of observations of tree species within stands below which", 
                                  "they are combined as a single category of 'other spp' in the climate-sensitive models")),
     defineParameter("minSize", "numeric", 0.02, 0, NA,
@@ -83,8 +83,8 @@ defineModule(sim, list(
     defineParameter("PSPdataTypes", "character", "all", NA, NA,
                     desc = paste("Which PSP datasets to source, defaulting to all. Other available options include",
                                  "'BC', 'AB', 'SK', 'NFI', 'ON', 'NB', and 'dummy'. 'dummy' is for unauthorized users.")),
-    defineParameter("PSPperiod", "numeric", c(1958, 2020), NA, NA,
-                    desc = paste("The years by which to compute climate normals and subset sampling plot data.",
+    defineParameter("PSPperiod", "numeric", c(1900, 2025), NA, NA,
+                    desc = paste("The measurement years by which to subset sampling plot data, if any",
                                  "Must be a vector of at least length 2.")),
     defineParameter("PSPvalidationPeriod", "numeric", NULL, NA, NA,
                     desc = paste("the period to build the validation dataset. Must be greater than PSPperiod",
@@ -94,12 +94,13 @@ defineModule(sim, list(
                                  "as the 2011 cutoff would remove this paired obsevation from the fitting data.",
                                  "If NULL, then validation dataset will instead be randomly sampled from available measurements.")),
     defineParameter("sppEquivCol", "character", "LandR", NA, NA, 
-                    desc = paste("the column in `LandR::sppEquivalencies_CA` to use for standardizing PSP names")),
+                    desc = paste("the column in `LandR::sppEquivalencies_CA` to use for standardizing PSP names.",
+                                 "Note that biomass is estimated from tree plot data using the column `PSP`.", 
+                                 "Combining the models for species with separate biomass equations (e.g. Populus balsamea, Populus treumuloides)",
+                                 "is possible by passing a sppEquivCol that has a single value for these entries.")),
     defineParameter("useHeight", "logical", TRUE, NA, NA,
                     desc = paste("Use height be used to calculate biomass (in addition to DBH). If height is NA for individual",
                                  "trees, then only DBH will be used for those measurements")),
-    defineParameter("validationProportion", "numeric", 0.05, 0, 1,
-                    desc = "proportion of data to use in validation set. Will be overridden by `PSPvalidationPeriod`."),
     defineParameter(".useCache", "character", ".inputObjects", NA, NA,
                     desc = paste("Should this entire module be run with caching activated?",
                                  "This is generally intended for data-type modules,",
@@ -117,10 +118,11 @@ defineModule(sim, list(
                  desc = paste("climate data for each PSP from ClimateNA. Temp is represented in degrees Celsius.",
                               "see https://climatena.ca/Help2 for details."),
                  sourceURL = "https://drive.google.com/file/d/1KFkX6bVCzwEA6V9MQEWqXxIEnON6YerN/view?usp=drive_link"),
-    expectsInput(objectName = "studyAreaPSP", objectClass = "SpatialPolygonsDataFrame",
-                 desc = paste("this area will be used to subset PSP plots before building the statistical model.",
-                              "Currently PSP datasets with repeat measures exist only for Saskatchewan,",
-                              "Alberta, Boreal British Columbia, and Ontario"), sourceURL = NA)
+    expectsInput(objectName = "studyAreaPSP", objectClass = "SpatVector",
+                 desc = paste("Optional area used to subset PSP plots before building the statistical models.",
+                              "Any class of spatial object is acceptable."), sourceURL = NA), 
+    expectsInput(objectName = "sppEquiv", objectClass = "data.table", 
+                 desc = "Table of species equivalencies. See `LandR::sppEquivalencies_CA`")
   ),
   outputObjects = bindrows(
     createsOutput(objectName = "gcsModel", objectClass = "ModelObject?",
@@ -128,9 +130,7 @@ defineModule(sim, list(
     createsOutput(objectName = "mcsModel", objectClass = "ModelObject?",
                   desc = "mortality model with covariates indicated by P(sim)$climateVariables and log(age)"),
     createsOutput(objectName = "PSPmodelData", objectClass = "data.table",
-                  desc = "PSP growth mortality calculations"),
-    createsOutput(objectName = "PSPvalidationData", objectClass = "data.table",
-                  desc = "validation dataset for testing model")
+                  desc = "PSP growth mortality calculations")
   )
 ))
 
@@ -143,20 +143,6 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
     init = {
       # do stuff for this event
       sim <- Init(sim)
-      
-      sim <- scheduleEvent(sim, start(sim) + 1L, eventType = "scheduleScrubGlobalEnv", eventPriority = .last())
-    },
-    scheduleScrubGlobalEnv = {
-      ## 2024-05: this event provides a temporary workaround to a SpaDES.core scheduling bug.
-      ## When `spades.allowInitDuringSimInit` is TRUE, SpaDES.core executes init events
-      ## in a new simulation, with a modified end time, meaning any events using `end(sim)`
-      ## will have those events scheduled for this modified time, and not the actual end time.
-      ## We work around this by scheduling the scheduling for later.
-      ## TODO: remove this workaround when either: gamlss no longer used, or scheduling bug fixed.
-      sim <- scheduleEvent(sim, end(sim), eventType = "scrubGlobalEnv", eventPriority = .last())
-    },
-    scrubGlobalEnv = {
-      on.exit(rm(PSPmodelData, envir = globalenv()), add = TRUE)
     },
     warning(paste("Undefined event type: '", current(sim)[1, "eventType", with = FALSE],
                   "' in module '", current(sim)[1, "moduleName", with = FALSE], "'", sep = ""))
@@ -169,7 +155,8 @@ Init <- function(sim) {
   
   if (is.null(sim$mcsModel) | is.null(sim$gcsModel)) {
     message("building climate-sensitive growth and mortality models")
-    #stupid-catch
+    
+    #checks
     if (length(P(sim)$PSPperiod) < 2) {
       stop("Please supply P(sim)$PSPperiod of length 2 or greater")
     }
@@ -181,6 +168,7 @@ Init <- function(sim) {
     #numeric from plotID
     #this should be done before creating modelData so the factors aren't duplicated in the validation set
     sim$PSPplot_gmcs[, plotNumeric := as.numeric(as.factor(OrigPlotID1))]
+    
     
     sim$PSPmodelData <- prepModelData(
       climateVariables = P(sim)$climateVariables,
@@ -194,14 +182,18 @@ Init <- function(sim) {
       PSPperiod = P(sim)$PSPperiod,
       minDBH = P(sim)$minDBH,
       minMeasures = P(sim)$minMeasures,
-      minSampleForSpecies = P(sim)$minSampleForSpecies,
       minSize = P(sim)$minSize,
       minTrees = P(sim)$minTrees) |>
       Cache(userTags = c("gmcsDataPrep", "prepModelData"))
     
     PSPmodelData <- sim$PSPmodelData
+    
+    #TODO: decide if this exclusion should occur in object saved by sim
+    #take only species of interst (ie in sim$sppEquiv)
+    PSPmodelData[, N := .N, .(spp)]
+    PSPmodelData <- PSPmodelData[N > P(sim)$minSampleForSpecies,]
     #TODO: set aside some for validation - unclear if necessary
-
+    
     #Prepare Data for XGBoost
     anomalyVariables <- setdiff(names(P(sim)$climateVariables), "")
     allClimVar <- c(P(sim)$climateVariables, anomalyVariables)
@@ -209,93 +201,60 @@ Init <- function(sim) {
     #need to remove non-useful columns due to use of categorical data
     #don't add mortality or it will be treated as a covariate 
     PSPmodelData <- PSPmodelData[, .SD, 
-                                 .SDcols = c("growth", "mortality", allClimVar,
+                                 .SDcols = c("logGrowth", "logMortality", allClimVar,
                                              "biomass", "logAge", "standBiomass", "spp")]
     
     # Add dummy variables for factor columns -- i.e., the random effects
     if (all(sapply(PSPmodelData, is.numeric)) %in% FALSE)
       PSPmodelData <- model.matrix(~ . + 0, data = PSPmodelData)
     PSPmodelData <- as.data.table(PSPmodelData)
-
-    colnamesPred <- setdiff(colnames(PSPmodelData), "growth") ## after model.matrix bcs colnames change
     
-    validNums <- sample(nrow(sim$PSPmodelData), 
-                        size = round(nrow(sim$PSPmodelData) * P(sim)$validationProportion), 
-                        replace=  FALSE)
-    xgbTrainData <- PSPmodelData[-validNums]
-    
-
-    
-    validationData <- sim$PSPmodelData[validNums] 
-    
-    
-   shaps <- lapply(growthMod_kfold, FUN = function(x){x$shap_values$mean_shap_score})
-   
-    
-
+    colnamesPred <- setdiff(colnames(PSPmodelData), "logGrowth") ## after model.matrix bcs colnames change
     ## model building
     ## only replace the models if NULL, so user can supply their own models
-     if (is.null(sim$gcsModel)) {
-       
-       #drop mortality from growth - and vice versa
-       xgbTrainData_g <- copy(xgbTrainData)
-       xgbTrainData_g[, , mortality := NULL]
-       
-       #hyperparameter tuning and kfold cross validation
-       browser()
-       sim$gcsModel <- runXGBOOST(dat = xgbTrainData_g, dig = NULL,
-                                     nFolds = 5,
-                                     eval_metric = c("rmse"),
-                                     colnamesResp = "growth", 
-                                     figDir = "outputs/figures/gmcsDataPrep", 
-                                     cachePath = cachePath(sim)) |>
-         Cache()
-       rm(xgbTrainData_g)
-     }
-   
+    if (is.null(sim$gcsModel)) {
+      #drop mortality (hence copy)
+      xgbTrainData_g <- copy(PSPmodelData)
+      xgbTrainData_g[, logMortality := NULL]
+      
+      #hyperparameter tuning and kfold cross validation
+      sim$gcsModel <- runXGBOOST(dat = xgbTrainData_g, dig = NULL,
+                                 nFolds = 5,
+                                 eval_metric = c("rmse"),
+                                 colnamesResp = "logGrowth", 
+                                 figDir = "outputs/figures/gmcsDataPrep", 
+                                 cachePath = cachePath(sim)) |>
+        Cache()
+      
+      r2 <- sapply(sim$gcsModel, r2Fun)
+      r2 <- mean(r2)
+      message("r-squared for climate-sensitive growth model is: ", r2)
+      
+      rm(xgbTrainData_g)
+    }
+    
     if (is.null(sim$mcsModel)) {
       
-      #drop mortality from growth - and vice versa
-      xgbTrainData_m <- copy(xgbTrainData)
-      xgbTrainData_m[, growth := NULL]
+      #drop growth (hence copy)
+      xgbTrainData_m <- copy(PSPmodelData)
+      xgbTrainData_m[, logGrowth := NULL]
       
       #hyperparameter tuning and kfold cross validation
       sim$mcsModel <- runXGBOOST(dat = xgbTrainData_m, dig = NULL,
                                  nFolds = 5,
                                  eval_metric = c("rmse"),
-                                 colnamesResp = "mortality", 
+                                 colnamesResp = "logMortality", 
                                  figDir = "outputs/figures/gmcsDataPrep", 
                                  cachePath = cachePath(sim)) |>
         Cache()
-    }
 
-    nullGrowthModel <- Cache(gmcsModelBuild,
-                             PSPmodelData = sim$PSPmodelData,
-                             model = P(sim)$nullMortalityModel,
-                             userTags = c("nullGrowthModel"))
-
-    nullMortalityModel <- Cache(gmcsModelBuild,
-                                PSPmodelData = sim$PSPmodelData,
-                                model = P(sim)$nullMortalityModel,
-                                userTags = c("nullMortalityModel"))
-
-    ## reporting NLL as comparison statistic - could do RME or MAE?
-    if (nrow(sim$PSPvalidationData) > 0) {
-      assign("PSPmodelData", sim$PSPmodelData, .GlobalEnv) ## needed until end of sim
-      ## TODO: use more specific name to avoid clobbering user's global env objs
-      ## E.g., `._tmp_gmcsDataPrep_PSPmodelData_.`
-      compareModels(nullGrowth = nullGrowthModel,
-                    nullMortality = nullMortalityModel,
-                    gcs = sim$gcsModel,
-                    mcs = sim$mcsModel,
-                    validationData = sim$PSPvalidationData,
-                    doPlotting = P(sim)$doPlotting,
-                    path = outputPath(sim),
-                    studyAreaName = P(sim)$.studyAreaName)
-      # rm(PSPmodelData, envir = .GlobalEnv) ## TODO
+      r2 <- sapply(sim$mcsModel, r2Fun)
+      r2 <- mean(r2)
+      message("r-squared for climate-sensitive mortality model is: ", r2)
     }
   }
-
+  
+  
   return(invisible(sim))
 }
 
@@ -303,7 +262,7 @@ Init <- function(sim) {
 
 prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PSPplot, 
                           PSPclimData, useHeight, biomassModel, PSPperiod, minDBH, 
-                          minMeasures, minSampleForSpecies, minSize, minTrees) {
+                          minMeasures, minSize, minTrees) {
 
   message(yellow("There are", nrow(PSPgis), "initial PSPs"))
   ## crop points to studyAreaPSP
@@ -476,9 +435,12 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   PSPmodelData <- PSPmodelSum[PSPmodelMean, on = joinCols]
   
   PSPmodelData <- unique(PSPplot[, .(OrigPlotID1, plotNumeric)])[PSPmodelData, on = c("OrigPlotID1")]
+  PSPmodelData[, logGrowth := log(growth)]
+  PSPmodelData[, logMortality := log(mortality)]
 
   setcolorder(PSPmodelData, c("OrigPlotID1", "plotNumeric", "plotSize", "year", "period", "periodLength",
-                              "standAge", "logAge", "Species", "growth", "mortality", "biomass", "netBiomassChng"))
+                              "standAge", "logAge", "Species", "growth", "logGrowth", 
+                              "mortality", "logMortality", "biomass", "netBiomassChng"))
   
   #calculate biomass as the sum of biomass by species within a plot, 
   # and scale growth by biomass 
@@ -488,16 +450,9 @@ prepModelData <- function(climateVariables, studyAreaPSP, PSPgis, PSPmeasure, PS
   PSPmodelData[, mortality_over_B := mortality/biomass]
   
   #TODO: spp should probably join with sppEquiv at some point - maybe here?
-  #make this second column which will lump species with low representation into "other"
+
   PSPmodelData[, spp := Species]
-  PSPmodelData[, sppCount := .N, .(spp)]
-  PSPmodelData[sppCount < minSampleForSpecies, spp := "otherSpp"]
-  
-  PSPmodelData[, N := NULL]
-  PSPmodelData[, Species := as.factor(Species)]
-  PSPmodelData[, spp := as.factor(spp)]
-  PSPmodelData[, sppCount := NULL]
-  
+
   return(PSPmodelData)
 }
 
@@ -641,6 +596,11 @@ sumPeriod <- function(x, m, p, clim, climVar, dbh) {
   pSums <- rbindlist(pSums)
   return(pSums)
 }
+
+r2Fun <- function(x) { 
+  R2 <- 1 - sum(x$valData$resid^2) / sum((x$valData$obs - mean(x$valData$obs))^2)
+}
+
 
 .inputObjects <- function(sim) {
   cacheTags <- c(currentModule(sim), "function:.inputObjects")
