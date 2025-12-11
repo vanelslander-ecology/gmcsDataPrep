@@ -117,6 +117,10 @@ defineModule(sim, list(
                               "Any class of spatial object is acceptable."), sourceURL = NA), 
     expectsInput(objectName = "sppEquiv", objectClass = "data.table", 
                  desc = "Table of species equivalencies. See `LandR::sppEquivalencies_CA`"), 
+    expectsInput("sppEquiv", "data.table", 
+                 desc = paste("table of species equivalencies - see `?LandR::sppEquivalencies_CA`", 
+                              "unique observations of <sppEquivCol> will be included as in the climate-sensitive model",
+                              "as a factor covariate (converted to dummy for xgboost)")), 
     expectsInput("sppEquivLong", "data.table", 
                  desc = paste("The full table of species equivalencies - see `?LandR::sppEquivalencies_CA`.",
                               "Biomass will be estimated for each species based on the `sp_Biomass_eq' column,",
@@ -153,6 +157,8 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 ### template initialization
 Init <- function(sim) {
   
+  sim$PSPmeasure_gmcs <- copy(sim$PSPmeasure_gmcs) #TODO: remove when this pass-by-reference error resolves
+  
   if (is.null(sim$mcsModel) | is.null(sim$gcsModel)) {
     message("building climate-sensitive growth and mortality models")
     
@@ -167,12 +173,10 @@ Init <- function(sim) {
     
     #TODO: do this manually for now until Jonathan's changes materialize
     #PSP will become SpBiomassEq
-    temp <- unique(sim$sppEquivLong[, .(PSP, Latin_full)])
-    temp[LandR == "Pice_eng_gla", PSP := "hybrid spruce"]
+    temp <- unique(sim$sppEquivLong[, .SD, .SDcol = c("PSP", "Latin_full", P(sim)$sppEquivCol)])
     setnames(temp, old = "PSP", new = "SpBiomassEq")
-    
     sim$PSPmeasure_gmcs <- temp[sim$PSPmeasure_gmcs, on = c("Latin_full" = "Species")]
-    setnames(sim$PSPmeasure_gmcs, old = c(P(sim)$sppEquivCol, "Species"), new = c("Species", "Latin_full"))
+    setnames(sim$PSPmeasure_gmcs, old = P(sim)$sppEquivCol, new = c("Species"))
     
     
     #numeric from plotID
