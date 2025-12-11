@@ -10,6 +10,7 @@
 #'    (i.e. the model using tuned parameters).
 #' @param colnamesResp Name of column in `dat` to use as response variable.
 #'    All other columns will be used as predictors
+#' @param objective the objective function to use in `xgboost`
 #' @param interaction_constraints passed to `xgboost::xgboost`.
 #'    By default no interaction constraints.
 #' @param eval_metric the metric by which to evaluate fit. 
@@ -33,7 +34,7 @@
 #' @importFrom reproducible Cache
 runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                        eval_metric = c("auc", "rmse", "logloss"),
-                       interaction_constraints = NULL, SHAPthresh = 0,
+                       objective = NULL, interaction_constraints = NULL, SHAPthresh = 0,
                        figDir = NULL, 
                        cachePath = NULL) {
 
