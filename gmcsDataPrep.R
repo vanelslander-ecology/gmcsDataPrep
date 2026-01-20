@@ -113,9 +113,9 @@ defineModule(sim, list(
   ),
   outputObjects = bindrows(
     createsOutput(objectName = "gcsModel", objectClass = "ModelObject?",
-                  desc = "growth model with covariates indicated by P(sim)$climateVariables, biomass, and log(age)"),
+                  desc = "growth model with covariates indicated by sim$climateVariablesForGMCS, biomass, and log(age)"),
     createsOutput(objectName = "mcsModel", objectClass = "ModelObject?",
-                  desc = "mortality model with covariates indicated by P(sim)$climateVariables, biomass, and log(age)"),
+                  desc = "mortality model with covariates indicated by sim$climateVariablesForGMCS, biomass, and log(age)"),
     createsOutput(objectName = "PSPmodelData", objectClass = "data.table",
                   desc = "PSP growth mortality calculations")
   )
@@ -140,8 +140,6 @@ doEvent.gmcsDataPrep = function(sim, eventTime, eventType) {
 ### template initialization
 Init <- function(sim) {
   
-  sim$PSPmeasure_gmcs <- copy(sim$PSPmeasure_gmcs) #TODO: remove when this pass-by-reference error resolves
-  
   if (is.null(sim$mcsModel) | is.null(sim$gcsModel)) {
     message("building climate-sensitive growth and mortality models")
     
@@ -160,8 +158,7 @@ Init <- function(sim) {
     setnames(temp, old = "PSP", new = "SpBiomassEq")
     sim$PSPmeasure_gmcs <- temp[sim$PSPmeasure_gmcs, on = c("Latin_full" = "Species")]
     setnames(sim$PSPmeasure_gmcs, old = P(sim)$sppEquivCol, new = c("Species"))
-    
-    
+    sim$PSPmeasure_gmcs[is.na(SpBiomassEq), SpBiomassEq := ""] #currently required by pemisc
     #numeric from plotID
     #this should be done before creating modelData so the factors aren't duplicated in the validation set
     sim$PSPplot_gmcs[, plotNumeric := as.numeric(as.factor(OrigPlotID1))]
@@ -173,7 +170,7 @@ Init <- function(sim) {
     #as they may represent remeasurements of previously tagged trees, or dead trees for which bark shedding has reduced 
     #the over-bark diameter Ontario = 2.5 cm (after 1991), Alberta = 7.3, SK = 7.1, BC = 4, and NFI = 9, NB, QC.
     sim$PSPmodelData <- prepModelData(
-      climateVariables = P(sim)$climateVariables,
+      climateVariables = sim$climateVariablesForGMCS,
       studyAreaPSP = sim$studyAreaPSP,
       PSPgis = sim$PSPgis_gmcs,
       PSPmeasure = sim$PSPmeasure_gmcs,
@@ -198,8 +195,8 @@ Init <- function(sim) {
     #TODO: set aside some for validation - unclear if necessary
     
     #Prepare Data for XGBoost
-    anomalyVariables <- setdiff(names(P(sim)$climateVariables), "")
-    allClimVar <- c(P(sim)$climateVariables, anomalyVariables)
+    anomalyVariables <- setdiff(names(sim$climateVariablesForGMCS), "")
+    allClimVar <- c(sim$climateVariablesForGMCS, anomalyVariables)
     
     #need to remove non-useful columns due to use of categorical data
     #don't add mortality or it will be treated as a covariate 
