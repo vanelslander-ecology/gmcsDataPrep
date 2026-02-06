@@ -12,8 +12,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
-  reqdPkgs = list("caret (>= 7.0.2.9001)", #clone ceresbarros/caret/pkg/caret or load from the submodule
-                  "crayon", "data.table", "ggplot2", "lightgbm", #TODO: unclear why lightgbm is not being installed with caret
+  reqdPkgs = list("crayon", "data.table", "ggplot2", "lightgbm",
                   "purrr", "pROC", "sf", "xgboost (>= 3.0.5.1)",
                   #maybe install.packages('xgboost', repos = c('https://dmlc.r-universe.dev', 'https://cloud.r-project.org'))
                   "PredictiveEcology/LandR@development (>= 1.1.4)",
@@ -208,6 +207,8 @@ Init <- function(sim) {
     if (all(sapply(PSPmodelData, is.numeric)) %in% FALSE)
       PSPmodelData <- model.matrix(~ . + 0, data = PSPmodelData)
     PSPmodelData <- as.data.table(PSPmodelData)
+    
+    #sum biomass and stand age within a pixelGroup 
     
     colnamesPred <- setdiff(colnames(PSPmodelData), "logGrowth") ## after model.matrix bcs colnames change
     ## model building
