@@ -31,8 +31,8 @@ defineModule(sim, list(
                                  "If a model uses a variable formula that represents a deviation from a climate normal,",
                                  "it should be indicated with a name, where the name represents the variable in the formula.",
                                  "For example, the default climate variable and model use the anomaly of `MAT`: `ATA`.")),
-    defineParameter("climateNormal", "numeric", c(1961:1990), NA, NA, 
-                    desc = paste("length 2 numeric denoting the first and last years to use when calculating an anomaly variable.")),
+    defineParameter("climateNormal", "numeric", c(1951:1980), NA, NA, 
+                    desc = paste("length 2 numeric denoting the first and last years to use when calculating anomaly variables")),
     #TODO: review this parameter once the climate normal data is avaiable for PSPs (currently only 2001-2020 via climr)
     defineParameter("doAssertion", "logical", getOption("LandR.assertions"), NA, NA,
                     desc = "assertions used to check climate data for NA values in valid pixels"),
