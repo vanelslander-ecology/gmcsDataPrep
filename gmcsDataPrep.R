@@ -14,6 +14,7 @@ defineModule(sim, list(
   documentation = list("README.txt", "gmcsDataPrep.Rmd"),
   reqdPkgs = list("crayon", "data.table", "ggplot2", "lightgbm",
                   "purrr", "pROC", "sf", "xgboost (>= 3.0.5.1)",
+                  # "ceresbarros/caret@master/pkg/caret",
                   #maybe install.packages('xgboost', repos = c('https://dmlc.r-universe.dev', 'https://cloud.r-project.org'))
                   "PredictiveEcology/LandR@development (>= 1.1.4)",
                   "ianmseddy/LandR.CS@development (>= 0.0.3.9000)",
@@ -31,8 +32,9 @@ defineModule(sim, list(
                                  "If a model uses a variable formula that represents a deviation from a climate normal,",
                                  "it should be indicated with a name, where the name represents the variable in the formula.",
                                  "For example, the default climate variable and model use the anomaly of `MAT`: `ATA`.")),
-    defineParameter("climateNormal", "numeric", c(1951:1980), NA, NA, 
-                    desc = paste("length 2 numeric denoting the first and last years to use when calculating anomaly variables")),
+    defineParameter("climateNormal", "numeric", c(1991:2020), NA, NA, 
+                    desc = paste("length 2 numeric denoting the first and last years to use when calculating anomaly variables.",
+                                 "This date range should match the data used to estimate maxANPP and maxB, if applicable.")),
     #TODO: review this parameter once the climate normal data is avaiable for PSPs (currently only 2001-2020 via climr)
     defineParameter("doAssertion", "logical", getOption("LandR.assertions"), NA, NA,
                     desc = "assertions used to check climate data for NA values in valid pixels"),
@@ -266,6 +268,10 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
                           PSPmeasure, PSPplot, PSPclimData, useHeight, biomassModel, 
                           PSPperiod, minDBH, minMeasures, minSize, minTrees) {
 
+  #this is necessary for restartSpades to work if the error occurs in this module
+  PSPmeasure <- copy(PSPmeasure)
+  PSPplot <- copy(PSPplot)
+  
   message(yellow("There are", nrow(PSPgis), "initial PSPs"))
   ## crop points to studyAreaPSP
   if (!is.null(studyAreaPSP)) {
