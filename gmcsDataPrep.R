@@ -71,9 +71,16 @@ defineModule(sim, list(
                                  "would be used even though the first measurement falls outside the 2011 fitting period",
                                  "as the 2011 cutoff would remove this paired obsevation from the fitting data.",
                                  "If NULL, then validation dataset will instead be randomly sampled from available measurements.")),
-    defineParameter("sppEquivCol", "character", "LandR", NA, NA, 
+    defineParameter("QCaction", "numeric", 1, 0, 4,
+                    paste("Level of quality control to apply based on assessTreeNumberConsistency:",
+                          "0 = no action;",
+                          "1 = remove problematic trees from all measurements, keeping other trees in those measurements/plots;",
+                          "2 = remove all measurements flagged as problematic and any subsequent measurements within those plots;",
+                          "3 = remove all plots that contain any problematic measurements;",
+                          "4 - remove all plots that contain any problematic measurements OR problematic trees.")),
+    defineParameter("sppEquivCol", "character", "LandR", NA, NA,
                     desc = paste("the column in `LandR::sppEquivalencies_CA` to use for standardizing PSP names.",
-                                 "Note that biomass is estimated from tree plot data using the column `PSP`.", 
+                                 "Note that biomass is estimated from tree plot data using the column `PSP`.",
                                  "Combining the models for species with separate biomass equations (e.g. Populus balsamea, Populus treumuloides)",
                                  "is possible by passing a sppEquivCol that has a single value for these entries.")),
     defineParameter("useHeight", "logical", TRUE, NA, NA,
@@ -184,7 +191,8 @@ Init <- function(sim) {
       minDBH = P(sim)$minDBH,
       minMeasures = P(sim)$minMeasures,
       minSize = P(sim)$minSize,
-      minTrees = P(sim)$minTrees) |>
+      minTrees = P(sim)$minTrees,
+      QCaction = P(sim)$QCaction) |>
       Cache(userTags = c("gmcsDataPrep", "prepModelData"))
     
     PSPmodelData <- sim$PSPmodelData
@@ -288,6 +296,73 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
   PSPplot <- PSPplot[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
   PSPclimData <- PSPclimData[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
+
+  #Filter bad trees, measurements, or plots
+  if (QCaction > 0) {
+    message("Assessing tree number consistency across PSP measurements...")
+
+    qcResult <- assessTreeNumberConsistency(
+      plots = list(PSPplot = PSPplot, PSPmeasure = PSPmeasure)
+    )
+
+    problematicTrees        <- qcResult$problematicTrees
+    problematicMeasurements <- as.character(qcResult$problematicMeasurements)
+
+    # Capture pre-filter counts for reporting
+    nPlots_before <- uniqueN(PSPplot$OrigPlotID1)
+    nMeas_before  <- uniqueN(PSPmeasure$MeasureID)
+    nTrees_before <- nrow(PSPmeasure)
+
+    if (QCaction == 1) {
+      # Remove only the flagged trees; keep all other trees and measurements
+      # in those plots/measurements untouched.
+      PSPmeasure <- PSPmeasure[!problematicTrees, on = .(OrigPlotID1, MeasureID, TreeNumber)]
+
+    } else if (QCaction == 2) {
+      # Remove the flagged measurements and ALL later measurements in those plots
+      flaggedMeas <- PSPmeasure[MeasureID %in% problematicMeasurements, .(firstFlagYear = min(MeasureYear)), by = OrigPlotID1]
+      # For plots with a flagged measurement: keep only records before the first flagged year
+      precedentMeasures <- PSPmeasure[flaggedMeas, on = "OrigPlotID1", nomatch = 0L][MeasureYear < firstFlagYear][, firstFlagYear := NULL]
+      cleanMeasures <- PSPmeasure[!flaggedMeas, on = "OrigPlotID1"]
+      PSPmeasure <- rbind(precedentMeasures, cleanMeasures)
+
+    } else if (QCaction == 3) {
+      #Remove any plot that ever had a bad measurement
+      badPlots <- unique(as.character(PSPmeasure[MeasureID %in% problematicMeasurements, OrigPlotID1]))
+
+      PSPmeasure <- PSPmeasure[!(as.character(OrigPlotID1) %in% badPlots)]
+      PSPplot <- PSPplot[!(as.character(OrigPlotID1) %in% badPlots)]
+
+    } else if (QCaction == 4) {
+      #Remove any plot that ever had a bad measurement OR a bad tree
+      badPlots_fromMeas <- unique(as.character(PSPmeasure[MeasureID %in% problematicMeasurements, OrigPlotID1]))
+      badPlots_fromTrees <- unique(as.character(problematicTrees$OrigPlotID1))
+      badPlots <- unique(c(badPlots_fromMeas, badPlots_fromTrees))
+
+      PSPmeasure <- PSPmeasure[!(as.character(OrigPlotID1) %in% badPlots)]
+      PSPplot <- PSPplot[!(as.character(OrigPlotID1) %in% badPlots)]
+    }
+
+    nPlots_after <- uniqueN(PSPplot$OrigPlotID1)
+    nMeas_after  <- uniqueN(PSPmeasure$MeasureID)
+    nTrees_after <- nrow(PSPmeasure)
+
+    percent_removed <- function(before, after) {
+      if (before <= 0 || !is.finite(before) || !is.finite(after)) {
+        return("NA")
+      }
+      paste0(round(100 * (before - after) / before, 1), "%")
+    }
+
+    message(
+      "QCaction = ", QCaction, " filtering complete:\n",
+      "  Plots removed:        ", percent_removed(nPlots_before,  nPlots_after),  "\n",
+      "  Measurements removed: ", percent_removed(nMeas_before,   nMeas_after),   "\n",
+      "  Trees removed:        ", percent_removed(nTrees_before,  nTrees_after)
+    )
+  } else {
+    message("QCaction = 0: skipping tree number consistency assessment.")
+  }
 
   ## might as well drop species with no biomass match
 
