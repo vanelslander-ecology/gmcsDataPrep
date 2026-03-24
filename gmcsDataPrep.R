@@ -297,7 +297,7 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
   PSPplot <- PSPplot[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
   PSPclimData <- PSPclimData[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
-  browser()
+
   #Filter bad trees, measurements, or plots
   if (QCaction > 0) {
     message("Assessing tree number consistency across PSP measurements...")
