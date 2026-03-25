@@ -72,7 +72,7 @@ defineModule(sim, list(
                                  "as the 2011 cutoff would remove this paired obsevation from the fitting data.",
                                  "If NULL, then validation dataset will instead be randomly sampled from available measurements.")),
     defineParameter("QCaction", "numeric", 1, 0, 4,
-                    desc = paste("Level of quality control to apply based on assessTreeNumberConsistency. Each level is additive,"
+                    desc = paste("Level of quality control to apply based on assessTreeNumberConsistency. Each level is additive",
                                  "so that level 4 performs the actions of levels 1, 2, 3, and 4:",
                                  "0 = no action;",
                                  "1 = remove all measurements flagged as problematic and any subsequent measurements within those plots;",
