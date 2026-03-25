@@ -38,13 +38,14 @@ defineModule(sim, list(
     #TODO: review this parameter once the climate normal data is avaiable for PSPs (currently only 2001-2020 via climr)
     defineParameter("doAssertion", "logical", getOption("LandR.assertions"), NA, NA,
                     desc = "assertions used to check climate data for NA values in valid pixels"),
-    defineParameter("doPlotting", "logical", FALSE, NA, NA, desc = "if true, will plot and save models"),
+    defineParameter("doPlotting", "logical", FALSE, NA, NA, desc = paste("if true, will plot and save models")),
+    defineParameter("growthKFolds", "numeric", 5, 0, Inf, desc = paste("number of K-folds applied to xgBoost climate-sensetive growth model")),
     defineParameter("minDBH", "numeric", 10, 0, NA,
                     desc = "The minimum DBH (cm) allowed. Each province uses different criteria for monitoring trees,
                     so a conservative threshold is advised The following are approximations: ",
                     "Ontario = 2.5 cm (after 1991), Alberta = 7.3, SK = 9.7 and 7.1 before/after 1977, BC = 4,",
                     "QC = 9, NB = 5, NFI = 9"),
-    defineParameter("minMeasures", "numeric", 2, Inf, 3,
+    defineParameter("minMeasures", "numeric", 2, 2, Inf,
                     desc = paste0("the minimum number of measurements per plot. Each pair of measurements",
                                   "generates one observation of growth and mortality")),
     defineParameter("minTrees", "numeric", 30, 0, NA,
@@ -58,6 +59,7 @@ defineModule(sim, list(
     defineParameter("minSize", "numeric", 0.02, 0, NA,
                     desc = paste("The minimum size (in hectares) of growth plot. All metrics are adjusted for area.",
                                  "The canonical methodology did not force a minimum size but the minimum size was 0.04 ha.")),
+    defineParameter("mortalityKFolds", "numeric", 5, 0, Inf, desc = paste("number of K-folds applied to xgBoost climate-sensetive mortality model")),
     defineParameter("PSPdataTypes", "character", "all", NA, NA,
                     desc = paste("Which PSP datasets to source, defaulting to all. Other available options include",
                                  "'BC', 'AB', 'SK', 'NFI', 'ON', 'NB', and 'dummy'. 'dummy' is for unauthorized users.")),
@@ -232,7 +234,7 @@ Init <- function(sim) {
 
       #hyperparameter tuning and kfold cross validation
       sim$gcsModel <- runXGBOOST(dat = xgbTrainData_g, dig = NULL,
-                                 nFolds = 5,
+                                 nFolds = P(sim)$growthKFolds,
                                  eval_metric = c("rmse"),
                                  colnamesResp = "logGrowth",
                                  figDir = "outputs/figures/gmcsDataPrep",
@@ -254,7 +256,7 @@ Init <- function(sim) {
 
       #hyperparameter tuning and kfold cross validation
       sim$mcsModel <- runXGBOOST(dat = xgbTrainData_m, dig = NULL,
-                                 nFolds = 5,
+                                 nFolds = P(sim)$mortalityKFolds,
                                  objective = "reg::tweedie",
                                  eval_metric = c("rmse"),
                                  colnamesResp = "mortality",
