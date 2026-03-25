@@ -232,18 +232,23 @@ Init <- function(sim) {
       xgbTrainData_g <- copy(PSPmodelData)
       xgbTrainData_g[, mortality := NULL]
 
+      # module‑safe figure directory
+      figDir <- file.path(outputPath(sim), "figures", "gmcsDataPrep", "growth")
+      checkPath(figDir, create = TRUE)
       #hyperparameter tuning and kfold cross validation
-      sim$gcsModel <- runXGBOOST(dat = xgbTrainData_g, dig = NULL,
+      sim$gcsModel <- runXGBOOST(dat = xgbTrainData_g,
+                                 dig = NULL,
                                  nFolds = P(sim)$growthKFolds,
                                  eval_metric = c("rmse"),
                                  colnamesResp = "logGrowth",
-                                 figDir = "outputs/figures/gmcsDataPrep",
+                                 figDir = figDir,
                                  cachePath = cachePath(sim)) |>
         Cache()
+      # compute mean R² across folds, save to simList
+      r2_vals <- sapply(sim$gcsModel, r2Fun)
+      sim$gcsModel_r2 <- mean(r2_vals)
 
-      r2 <- sapply(sim$gcsModel, r2Fun)
-      r2 <- mean(r2)
-      message("r-squared for climate-sensitive growth model is: ", r2)
+      message("r-squared for climate-sensitive growth model is: ", sim$gcsModel_r2)
 
       rm(xgbTrainData_g)
     }
@@ -254,19 +259,28 @@ Init <- function(sim) {
       xgbTrainData_m <- copy(PSPmodelData)
       xgbTrainData_m[, logGrowth := NULL]
 
+      # module-safe figure directory
+      figDir <- file.path(outputPath(sim), "figures", "gmcsDataPrep", "mortality")
+      checkPath(figDir, create = TRUE)
+
       #hyperparameter tuning and kfold cross validation
-      sim$mcsModel <- runXGBOOST(dat = xgbTrainData_m, dig = NULL,
+      sim$mcsModel <- runXGBOOST(dat = xgbTrainData_m,
+                                 dig = NULL,
                                  nFolds = P(sim)$mortalityKFolds,
                                  objective = "reg::tweedie",
                                  eval_metric = c("rmse"),
                                  colnamesResp = "mortality",
-                                 figDir = "outputs/figures/gmcsDataPrep",
+                                 figDir = figDir,
                                  cachePath = cachePath(sim)) |>
         Cache()
 
-      r2 <- sapply(sim$mcsModel, r2Fun)
-      r2 <- mean(r2)
-      message("r-squared for climate-sensitive mortality model is: ", r2)
+      # compute mean R² across folds, save to simList
+      r2_vals <- sapply(sim$mcsModel, r2Fun)
+      sim$mcsModel_r2 <- mean(r2_vals)
+
+      message("r-squared for climate-sensitive mortality model is: ", sim$mcsModel_r2)
+
+      rm(xgbTrainData_m)
     }
   }
 
