@@ -38,7 +38,7 @@ defineModule(sim, list(
     #TODO: review this parameter once the climate normal data is avaiable for PSPs (currently only 2001-2020 via climr)
     defineParameter("doAssertion", "logical", getOption("LandR.assertions"), NA, NA,
                     desc = "assertions used to check climate data for NA values in valid pixels"),
-    defineParameter("doPlotting", "logical", FALSE, NA, NA, desc = paste("if true, will plot and save models")),
+    defineParameter("doPlotting", "logical", TRUE, NA, NA, desc = paste("if true, will plot and save models")),
     defineParameter("growthKFolds", "numeric", 5, 0, Inf, desc = paste("number of K-folds applied to xgBoost climate-sensetive growth model")),
     defineParameter("minDBH", "numeric", 10, 0, NA,
                     desc = "The minimum DBH (cm) allowed. Each province uses different criteria for monitoring trees,
@@ -92,7 +92,10 @@ defineModule(sim, list(
     defineParameter(".useCache", "character", ".inputObjects", NA, NA,
                     desc = paste("Should this entire module be run with caching activated?",
                                  "This is generally intended for data-type modules,",
-                                 "where stochasticity and time are not relevant."))
+                                 "where stochasticity and time are not relevant.")),
+    defineParameter(".runName", "character", NA_character_, NA, NA,
+                    paste('Name for simulation provided by user. Used as a title for diagnostic plots',
+                          'NULL is allowed but will result in plots without titles.'))
   ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
