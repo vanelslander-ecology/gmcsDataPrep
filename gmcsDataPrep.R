@@ -4,7 +4,8 @@ defineModule(sim, list(
   keywords = c("LandR", "LandR.CS"),
   authors = c(
     person(c("Ian", "MS"), "Eddy", email = "ian.eddy@nrcan-rncan.gc.ca", role = c("aut", "cre")),
-    person(c("Alex", "M"), "Chubaty", email = "achubaty@for-cast.ca", role = "ctb")
+    person(c("Alex", "M"), "Chubaty", email = "achubaty@for-cast.ca", role = "ctb"),
+    person(c("Jonathan"), "Van Elslander", email = "jonathan.vanelslander@nrcan-rncan.gc.ca", role = "ctb")
   ),
   childModules = character(0),
   version = list(gmcsDataPrep = "0.0.2.9000"),
