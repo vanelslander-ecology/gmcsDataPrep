@@ -293,6 +293,7 @@ Init <- function(sim) {
 
       rm(xgbTrainData_m)
     }
+
     if (is.na(P(sim)$.runName)) {
       runName <- NULL
     } else {
@@ -305,7 +306,7 @@ Init <- function(sim) {
     }) |>
       rbindlist()
 
-    gcsShapPath <- file.path(outputPath(sim), paste0("gcsShapScores_", runName, ".csv"))
+    gcsShapPath <- file.path(outputPath(sim), paste0("gcsShapScores.csv"))
     data.table::fwrite(sim$gcsShapScores, file = gcsShapPath)
     message("Growth model SHAP scores saved to: ", gcsShapPath)
 
@@ -315,9 +316,51 @@ Init <- function(sim) {
     }) |>
       rbindlist()
 
-    mcsShapPath <- file.path(outputPath(sim), paste0("mcsShapScores_", runName, ".csv"))
+    mcsShapPath <- file.path(outputPath(sim), paste0("mcsShapScores.csv"))
     data.table::fwrite(sim$mcsShapScores, file = mcsShapPath)
     message("Mortality model SHAP scores saved to: ", mcsShapPath)
+
+    #Diagnostic Plotting
+    if (P(sim)$doPlotting) {
+
+      plotDir <- file.path(outputPath(sim), "figures", "gmcsDataPrep")
+      checkPath(plotDir, create = TRUE)
+
+      pGrowthVal <- ggplot(ggGrowth, aes(x = obs, y = pred)) +
+        geom_bin2d() +
+        geom_abline(slope = 1, intercept = 0, colour = "red", linetype = "dashed") +
+        labs(title = paste0(runName,"\nGrowth model: observed vs. predicted (R² = ", round(sim$gcsModel_r2, 3), ")"),
+             x = "Observed growth (g/m²)",
+             y = "Predicted growth (g/m²)") +
+        theme_minimal()
+
+      ggsave(file.path(gDir, "gcsModel_obsVpred.png"), pGrowthVal,
+             width = 7, height = 6, dpi = 150)
+
+      pMortVal <- ggplot(ggMortality, aes(x = obs, y = pred)) +
+        geom_bin2d() +
+        geom_abline(slope = 1, intercept = 0, colour = "red", linetype = "dashed") +
+        labs(title = paste0(runName,"\nMortality model: observed vs. predicted (R² = ", round(sim$mcsModel_r2, 3), ")"),
+             x = "Observed mortality (g/m²)",
+             y = "Predicted mortality (g/m²)") +
+        theme_minimal()
+
+      ggsave(file.path(mDir, "mcsModel_obsVpred.png"), pMortVal,
+             width = 7, height = 6, dpi = 150)
+
+      pPSPscatter <- ggplot(sim$PSPmodelData, aes(y = mortality, x = growth)) +
+        geom_bin2d() +
+        labs(
+          title = paste0(runName,"\nGrowth vs. Mortality Observed in PSP data"),
+          y = "Mortality (g/m²)",
+          x = "Growth (g/m²)"
+        ) +
+        theme_minimal()
+
+      ggsave(file.path(plotDir, "Growth_vs_mortality.png"), pPSPscatter,
+             width = 7, height = 6, dpi = 150)
+      message("Plots saved to: ", plotDir)
+    }
   }
 
   return(invisible(sim))
