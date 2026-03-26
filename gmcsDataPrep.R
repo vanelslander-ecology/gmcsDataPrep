@@ -128,7 +128,13 @@ defineModule(sim, list(
     createsOutput(objectName = "mcsModel", objectClass = "ModelObject?",
                   desc = "mortality model with covariates indicated by sim$climateVariablesForGMCS, biomass, and log(age)"),
     createsOutput(objectName = "PSPmodelData", objectClass = "data.table",
-                  desc = "PSP growth mortality calculations")
+                  desc = "PSP growth mortality calculations"),
+    createsOutput(objectName = "gcsShapScores", objectClass = "data.table",
+                  desc = paste("Mean absolute SHAP scores per variable averaged across cross-validation folds",
+                               "for the climate-sensitive growth model (gcsModel) saved as a .csv")),
+    createsOutput(objectName = "mcsShapScores", objectClass = "data.table",
+                  desc = paste("Mean absolute SHAP scores per variable averaged across cross-validation folds",
+                               "for the climate-sensitive mortality model (mcsModel) saved as a .csv"))
   )
 ))
 
@@ -249,8 +255,10 @@ Init <- function(sim) {
                                  cachePath = cachePath(sim)) |>
         Cache()
       # compute mean R² across folds, save to simList
-      r2_vals <- sapply(sim$gcsModel, r2Fun)
-      sim$gcsModel_r2 <- mean(r2_vals)
+      ggGrowth <- lapply(sim$gcsModel, function(x){x$valData}) |> data.table::rbindlist()
+      ggGrowth[, obs := exp(obs)]
+      ggGrowth[, pred := exp(pred)]
+      sim$gcsModel_r2 <- r2Fun(ggGrowth)
 
       message("r-squared for climate-sensitive growth model is: ", sim$gcsModel_r2)
 
@@ -275,13 +283,38 @@ Init <- function(sim) {
         Cache()
 
       # compute mean R² across folds, save to simList
-      r2_vals <- sapply(sim$mcsModel, r2Fun)
-      sim$mcsModel_r2 <- mean(r2_vals)
+      ggMortality <- lapply(sim$mcsModel, function(x){x$valData}) |> data.table::rbindlist()
+      sim$mcsModel_r2 <- r2Fun(ggMortality)
 
       message("r-squared for climate-sensitive mortality model is: ", sim$mcsModel_r2)
 
       rm(xgbTrainData_m)
     }
+    if (is.na(P(sim)$.runName)) {
+      runName <- NULL
+    } else {
+      runName <- P(sim)$.runName
+    }
+
+    sim$gcsShapScores <- lapply(sim$gcsModel, function(x) {
+      out <- x$shap_values$mean_shap_score
+      data.table(variable = names(out), shap_score = out)
+    }) |>
+      rbindlist()
+
+    gcsShapPath <- file.path(outputPath(sim), paste0("gcsShapScores_", runName, ".csv"))
+    data.table::fwrite(sim$gcsShapScores, file = gcsShapPath)
+    message("Growth model SHAP scores saved to: ", gcsShapPath)
+
+    sim$mcsShapScores <- lapply(sim$mcsModel, function(x) {
+      out <- x$shap_values$mean_shap_score
+      data.table(variable = names(out), shap_score = out)
+    }) |>
+      rbindlist()
+
+    mcsShapPath <- file.path(outputPath(sim), paste0("mcsShapScores_", runName, ".csv"))
+    data.table::fwrite(sim$mcsShapScores, file = mcsShapPath)
+    message("Mortality model SHAP scores saved to: ", mcsShapPath)
   }
 
   return(invisible(sim))
@@ -720,7 +753,9 @@ sumPeriod <- function(x, m, p, clim, climVar, dbh) {
 }
 
 r2Fun <- function(x) {
-  R2 <- 1 - sum(x$valData$resid^2) / sum((x$valData$obs - mean(x$valData$obs))^2)
+  x[, resid := abs(obs - pred)]
+  R2 <- 1 - sum(x$resid^2) / sum((x$obs - mean(x$obs))^2)
+  return(R2)
 }
 
 
