@@ -126,9 +126,9 @@ defineModule(sim, list(
                               "is used to improve stand biomass estimates even if some species are not of interest.")),
   ),
   outputObjects = bindrows(
-    createsOutput(objectName = "gcsModel", objectClass = "ModelObject?",
+    createsOutput(objectName = "gcsModel", objectClass = "list",
                   desc = "growth model with covariates indicated by sim$climateVariablesForGMCS, biomass, and log(age)"),
-    createsOutput(objectName = "mcsModel", objectClass = "ModelObject?",
+    createsOutput(objectName = "mcsModel", objectClass = "list",
                   desc = "mortality model with covariates indicated by sim$climateVariablesForGMCS, biomass, and log(age)"),
     createsOutput(objectName = "PSPmodelData", objectClass = "data.table",
                   desc = "PSP growth mortality calculations"),
