@@ -224,6 +224,13 @@ Init <- function(sim) {
     #sum biomass and stand age within a pixelGroup
 
     colnamesPred <- setdiff(colnames(PSPmodelData), "logGrowth") ## after model.matrix bcs colnames change
+
+    # module-safe figure directories
+    gDir <- file.path(outputPath(sim), "figures", "gmcsDataPrep", "growth")
+    checkPath(gDir, create = TRUE)
+    mDir <- file.path(outputPath(sim), "figures", "gmcsDataPrep", "mortality")
+    checkPath(mDir, create = TRUE)
+
     ## model building
     ## only replace the models if NULL, so user can supply their own models
     if (is.null(sim$gcsModel)) {
@@ -232,16 +239,13 @@ Init <- function(sim) {
       xgbTrainData_g <- copy(PSPmodelData)
       xgbTrainData_g[, mortality := NULL]
 
-      # module‑safe figure directory
-      figDir <- file.path(outputPath(sim), "figures", "gmcsDataPrep", "growth")
-      checkPath(figDir, create = TRUE)
       #hyperparameter tuning and kfold cross validation
       sim$gcsModel <- runXGBOOST(dat = xgbTrainData_g,
                                  dig = NULL,
                                  nFolds = P(sim)$growthKFolds,
                                  eval_metric = c("rmse"),
                                  colnamesResp = "logGrowth",
-                                 figDir = figDir,
+                                 figDir = gDir,
                                  cachePath = cachePath(sim)) |>
         Cache()
       # compute mean R² across folds, save to simList
@@ -259,10 +263,6 @@ Init <- function(sim) {
       xgbTrainData_m <- copy(PSPmodelData)
       xgbTrainData_m[, logGrowth := NULL]
 
-      # module-safe figure directory
-      figDir <- file.path(outputPath(sim), "figures", "gmcsDataPrep", "mortality")
-      checkPath(figDir, create = TRUE)
-
       #hyperparameter tuning and kfold cross validation
       sim$mcsModel <- runXGBOOST(dat = xgbTrainData_m,
                                  dig = NULL,
@@ -270,7 +270,7 @@ Init <- function(sim) {
                                  objective = "reg::tweedie",
                                  eval_metric = c("rmse"),
                                  colnamesResp = "mortality",
-                                 figDir = figDir,
+                                 figDir = mDir,
                                  cachePath = cachePath(sim)) |>
         Cache()
 
