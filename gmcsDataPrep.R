@@ -38,13 +38,14 @@ defineModule(sim, list(
     #TODO: review this parameter once the climate normal data is avaiable for PSPs (currently only 2001-2020 via climr)
     defineParameter("doAssertion", "logical", getOption("LandR.assertions"), NA, NA,
                     desc = "assertions used to check climate data for NA values in valid pixels"),
-    defineParameter("doPlotting", "logical", FALSE, NA, NA, desc = "if true, will plot and save models"),
+    defineParameter("doPlotting", "logical", TRUE, NA, NA, desc = paste("if true, will plot and save models")),
+    defineParameter("growthKFolds", "numeric", 5, 0, Inf, desc = paste("number of K-folds applied to xgBoost climate-sensetive growth model")),
     defineParameter("minDBH", "numeric", 10, 0, NA,
                     desc = "The minimum DBH (cm) allowed. Each province uses different criteria for monitoring trees,
                     so a conservative threshold is advised The following are approximations: ",
                     "Ontario = 2.5 cm (after 1991), Alberta = 7.3, SK = 9.7 and 7.1 before/after 1977, BC = 4,",
                     "QC = 9, NB = 5, NFI = 9"),
-    defineParameter("minMeasures", "numeric", 2, Inf, 3,
+    defineParameter("minMeasures", "numeric", 2, 2, Inf,
                     desc = paste0("the minimum number of measurements per plot. Each pair of measurements",
                                   "generates one observation of growth and mortality")),
     defineParameter("minTrees", "numeric", 30, 0, NA,
@@ -58,6 +59,7 @@ defineModule(sim, list(
     defineParameter("minSize", "numeric", 0.02, 0, NA,
                     desc = paste("The minimum size (in hectares) of growth plot. All metrics are adjusted for area.",
                                  "The canonical methodology did not force a minimum size but the minimum size was 0.04 ha.")),
+    defineParameter("mortalityKFolds", "numeric", 5, 0, Inf, desc = paste("number of K-folds applied to xgBoost climate-sensetive mortality model")),
     defineParameter("PSPdataTypes", "character", "all", NA, NA,
                     desc = paste("Which PSP datasets to source, defaulting to all. Other available options include",
                                  "'BC', 'AB', 'SK', 'NFI', 'ON', 'NB', and 'dummy'. 'dummy' is for unauthorized users.")),
@@ -90,7 +92,10 @@ defineModule(sim, list(
     defineParameter(".useCache", "character", ".inputObjects", NA, NA,
                     desc = paste("Should this entire module be run with caching activated?",
                                  "This is generally intended for data-type modules,",
-                                 "where stochasticity and time are not relevant."))
+                                 "where stochasticity and time are not relevant.")),
+    defineParameter(".runName", "character", NA_character_, NA, NA,
+                    paste('Name for simulation provided by user. Used as a title for diagnostic plots',
+                          'NULL is allowed but will result in plots without titles.'))
   ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
@@ -121,12 +126,18 @@ defineModule(sim, list(
                               "is used to improve stand biomass estimates even if some species are not of interest.")),
   ),
   outputObjects = bindrows(
-    createsOutput(objectName = "gcsModel", objectClass = "ModelObject?",
+    createsOutput(objectName = "gcsModel", objectClass = "list",
                   desc = "growth model with covariates indicated by sim$climateVariablesForGMCS, biomass, and log(age)"),
-    createsOutput(objectName = "mcsModel", objectClass = "ModelObject?",
+    createsOutput(objectName = "mcsModel", objectClass = "list",
                   desc = "mortality model with covariates indicated by sim$climateVariablesForGMCS, biomass, and log(age)"),
     createsOutput(objectName = "PSPmodelData", objectClass = "data.table",
-                  desc = "PSP growth mortality calculations")
+                  desc = "PSP growth mortality calculations"),
+    createsOutput(objectName = "gcsShapScores", objectClass = "data.table",
+                  desc = paste("Mean absolute SHAP scores per variable averaged across cross-validation folds",
+                               "for the climate-sensitive growth model (gcsModel) saved as a .csv")),
+    createsOutput(objectName = "mcsShapScores", objectClass = "data.table",
+                  desc = paste("Mean absolute SHAP scores per variable averaged across cross-validation folds",
+                               "for the climate-sensitive mortality model (mcsModel) saved as a .csv"))
   )
 ))
 
@@ -222,6 +233,13 @@ Init <- function(sim) {
     #sum biomass and stand age within a pixelGroup
 
     colnamesPred <- setdiff(colnames(PSPmodelData), "logGrowth") ## after model.matrix bcs colnames change
+
+    # module-safe figure directories
+    gDir <- file.path(outputPath(sim), "figures", "gmcsDataPrep", "growth")
+    checkPath(gDir, create = TRUE)
+    mDir <- file.path(outputPath(sim), "figures", "gmcsDataPrep", "mortality")
+    checkPath(mDir, create = TRUE)
+
     ## model building
     ## only replace the models if NULL, so user can supply their own models
     if (is.null(sim$gcsModel)) {
@@ -231,17 +249,21 @@ Init <- function(sim) {
       xgbTrainData_g[, mortality := NULL]
 
       #hyperparameter tuning and kfold cross validation
-      sim$gcsModel <- runXGBOOST(dat = xgbTrainData_g, dig = NULL,
-                                 nFolds = 5,
+      sim$gcsModel <- runXGBOOST(dat = xgbTrainData_g,
+                                 dig = NULL,
+                                 nFolds = P(sim)$growthKFolds,
                                  eval_metric = c("rmse"),
                                  colnamesResp = "logGrowth",
-                                 figDir = "outputs/figures/gmcsDataPrep",
+                                 figDir = gDir,
                                  cachePath = cachePath(sim)) |>
         Cache()
+      # compute mean R² across folds, save to simList
+      ggGrowth <- lapply(sim$gcsModel, function(x){x$valData}) |> data.table::rbindlist()
+      ggGrowth[, obs := exp(obs)]
+      ggGrowth[, pred := exp(pred)]
+      sim$gcsModel_r2 <- r2Fun(ggGrowth)
 
-      r2 <- sapply(sim$gcsModel, r2Fun)
-      r2 <- mean(r2)
-      message("r-squared for climate-sensitive growth model is: ", r2)
+      message("r-squared for climate-sensitive growth model is: ", sim$gcsModel_r2)
 
       rm(xgbTrainData_g)
     }
@@ -253,18 +275,91 @@ Init <- function(sim) {
       xgbTrainData_m[, logGrowth := NULL]
 
       #hyperparameter tuning and kfold cross validation
-      sim$mcsModel <- runXGBOOST(dat = xgbTrainData_m, dig = NULL,
-                                 nFolds = 5,
+      sim$mcsModel <- runXGBOOST(dat = xgbTrainData_m,
+                                 dig = NULL,
+                                 nFolds = P(sim)$mortalityKFolds,
                                  objective = "reg::tweedie",
                                  eval_metric = c("rmse"),
                                  colnamesResp = "mortality",
-                                 figDir = "outputs/figures/gmcsDataPrep",
+                                 figDir = mDir,
                                  cachePath = cachePath(sim)) |>
         Cache()
 
-      r2 <- sapply(sim$mcsModel, r2Fun)
-      r2 <- mean(r2)
-      message("r-squared for climate-sensitive mortality model is: ", r2)
+      # compute mean R² across folds, save to simList
+      ggMortality <- lapply(sim$mcsModel, function(x){x$valData}) |> data.table::rbindlist()
+      sim$mcsModel_r2 <- r2Fun(ggMortality)
+
+      message("r-squared for climate-sensitive mortality model is: ", sim$mcsModel_r2)
+
+      rm(xgbTrainData_m)
+    }
+
+    if (is.na(P(sim)$.runName)) {
+      runName <- NULL
+    } else {
+      runName <- P(sim)$.runName
+    }
+
+    sim$gcsShapScores <- lapply(sim$gcsModel, function(x) {
+      out <- x$shap_values$mean_shap_score
+      data.table(variable = names(out), shap_score = out)
+    }) |>
+      rbindlist()
+
+    gcsShapPath <- file.path(outputPath(sim), paste0("gcsShapScores.csv"))
+    data.table::fwrite(sim$gcsShapScores, file = gcsShapPath)
+    message("Growth model SHAP scores saved to: ", gcsShapPath)
+
+    sim$mcsShapScores <- lapply(sim$mcsModel, function(x) {
+      out <- x$shap_values$mean_shap_score
+      data.table(variable = names(out), shap_score = out)
+    }) |>
+      rbindlist()
+
+    mcsShapPath <- file.path(outputPath(sim), paste0("mcsShapScores.csv"))
+    data.table::fwrite(sim$mcsShapScores, file = mcsShapPath)
+    message("Mortality model SHAP scores saved to: ", mcsShapPath)
+
+    #Diagnostic Plotting
+    if (P(sim)$doPlotting) {
+
+      plotDir <- file.path(outputPath(sim), "figures", "gmcsDataPrep")
+      checkPath(plotDir, create = TRUE)
+
+      pGrowthVal <- ggplot(ggGrowth, aes(x = obs, y = pred)) +
+        geom_bin2d() +
+        geom_abline(slope = 1, intercept = 0, colour = "red", linetype = "dashed") +
+        labs(title = paste0(runName,"\nGrowth model: observed vs. predicted (R² = ", round(sim$gcsModel_r2, 3), ")"),
+             x = "Observed growth (g/m²)",
+             y = "Predicted growth (g/m²)") +
+        theme_minimal()
+
+      ggsave(file.path(gDir, "gcsModel_obsVpred.png"), pGrowthVal,
+             width = 7, height = 6, dpi = 150)
+
+      pMortVal <- ggplot(ggMortality, aes(x = obs, y = pred)) +
+        geom_bin2d() +
+        geom_abline(slope = 1, intercept = 0, colour = "red", linetype = "dashed") +
+        labs(title = paste0(runName,"\nMortality model: observed vs. predicted (R² = ", round(sim$mcsModel_r2, 3), ")"),
+             x = "Observed mortality (g/m²)",
+             y = "Predicted mortality (g/m²)") +
+        theme_minimal()
+
+      ggsave(file.path(mDir, "mcsModel_obsVpred.png"), pMortVal,
+             width = 7, height = 6, dpi = 150)
+
+      pPSPscatter <- ggplot(sim$PSPmodelData, aes(y = mortality, x = growth)) +
+        geom_bin2d() +
+        labs(
+          title = paste0(runName,"\nGrowth vs. Mortality Observed in PSP data"),
+          y = "Mortality (g/m²)",
+          x = "Growth (g/m²)"
+        ) +
+        theme_minimal()
+
+      ggsave(file.path(plotDir, "Growth_vs_mortality.png"), pPSPscatter,
+             width = 7, height = 6, dpi = 150)
+      message("Plots saved to: ", plotDir)
     }
   }
 
@@ -704,7 +799,9 @@ sumPeriod <- function(x, m, p, clim, climVar, dbh) {
 }
 
 r2Fun <- function(x) {
-  R2 <- 1 - sum(x$valData$resid^2) / sum((x$valData$obs - mean(x$valData$obs))^2)
+  x[, resid := abs(obs - pred)]
+  R2 <- 1 - sum(x$resid^2) / sum((x$obs - mean(x$obs))^2)
+  return(R2)
 }
 
 
