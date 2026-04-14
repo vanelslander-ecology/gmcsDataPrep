@@ -20,7 +20,7 @@ defineModule(sim, list(
                   "ianmseddy/LandR.CS@development (>= 0.0.3.9000)",
                   "PredictiveEcology/reproducible (>= 2.1.0)",
                   "PredictiveEcology/pemisc@development (>= 0.0.4.9015)",
-                  "ianmseddy/PSPclean@development (>= 1.0.0.9001)",
+                  "ianmseddy/PSPclean@development (>= 1.0.0.9006)",
                   "PredictiveEcology/SHAPforxgboost (>= 0.1.3.9001)"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -40,7 +40,7 @@ defineModule(sim, list(
                     desc = "assertions used to check climate data for NA values in valid pixels"),
     defineParameter("doPlotting", "logical", TRUE, NA, NA, desc = paste("if true, will plot and save models")),
     defineParameter("growthKFolds", "numeric", 5, 0, Inf, desc = paste("number of K-folds applied to xgBoost climate-sensetive growth model")),
-    defineParameter("minDBH", "numeric", 10, 0, NA,
+    defineParameter("minDBH", "numeric", 9.7, 0, NA,
                     desc = "The minimum DBH (cm) allowed. Each province uses different criteria for monitoring trees,
                     so a conservative threshold is advised The following are approximations: ",
                     "Ontario = 2.5 cm (after 1991), Alberta = 7.3, SK = 9.7 and 7.1 before/after 1977, BC = 4,",
@@ -183,10 +183,10 @@ Init <- function(sim) {
     #this should be done before creating modelData so the factors aren't duplicated in the validation set
     sim$PSPplot_gmcs[, plotNumeric := as.numeric(as.factor(OrigPlotID1))]
 
-    minDBH <- sim$PSPmeasure_gmcs[, .(minDBH = min(DBH)), .(source)]
+    
     # SK From 1958/1964 to 1976 breakpoint DBH was 3.6” at 4.5’ (approximately 9.2cm at 1.3m).
     #Starting in 1977 the breakpoint DBH became 7.1cm DBH at 1.3m. Approximately 2% of the half-million
-    #trees in the data have a DBH which isbelow the breakpoint DBH, but have been retained in the data
+    #trees in the data have a DBH which is below the breakpoint DBH, but have been retained in the data
     #as they may represent remeasurements of previously tagged trees, or dead trees for which bark shedding has reduced
     #the over-bark diameter Ontario = 2.5 cm (after 1991), Alberta = 7.3, SK = 7.1, BC = 4, and NFI = 9, NB, QC.
     sim$PSPmodelData <- prepModelData(
@@ -200,7 +200,7 @@ Init <- function(sim) {
       biomassModel = P(sim)$biomassModel,
       climateNormal = P(sim)$climateNormal,
       PSPperiod = P(sim)$PSPperiod,
-      minDBH = P(sim)$minDBH,
+      minDBH_tag = P(sim)$minDBH,
       minMeasures = P(sim)$minMeasures,
       minSize = P(sim)$minSize,
       minTrees = P(sim)$minTrees,
@@ -210,7 +210,7 @@ Init <- function(sim) {
     PSPmodelData <- sim$PSPmodelData
 
     #TODO: decide if this exclusion should occur in object saved by sim
-    #take only species of interst (ie in sim$sppEquiv)
+    #take only species of interest (ie in sim$sppEquiv)
     PSPmodelData[, N := .N, .(spp)]
     PSPmodelData <- PSPmodelData[N > P(sim)$minSampleForSpecies,]
     #TODO: set aside some for validation - unclear if necessary
@@ -367,10 +367,9 @@ Init <- function(sim) {
 }
 
 
-
 prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
                           PSPmeasure, PSPplot, PSPclimData, useHeight, biomassModel,
-                          PSPperiod, minDBH, minMeasures, minSize, minTrees, QCaction) {
+                          PSPperiod, minDBH_tag, minMeasures, minSize, minTrees, QCaction) {
 
   #this is necessary for restartSpades to work if the error occurs in this module
   PSPmeasure <- copy(PSPmeasure)
@@ -393,12 +392,23 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
   PSPplot <- PSPplot[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
   PSPclimData <- PSPclimData[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
 
+  
+  #Filter out trees smaller than minDBH 
+  message(yellow("Filtering by min. DBH"))
+  
+  #filter out plots where the DBH tagging limit might be larger than minDBH
+  cutoffTooBig <- PSPplot[minDBH > minDBH_tag]$MeasureID
+  message("removing ", length(cutoffTooBig), " plots with DBH tagging limits above P(sim)$minDBH")
+  PSPmeasure <- PSPmeasure[!MeasureID %in% cutoffTooBig,]
+  PSPplot <- PSPplot[!MeasureID %in% cutoffTooBig,]
+  
   #Filter bad trees, measurements, or plots
   if (QCaction > 0) {
     message("Assessing tree number consistency across PSP measurements...")
 
     qcResult <- assessTreeNumberConsistency(
-      plots = list(PSPplot = PSPplot, PSPmeasure = PSPmeasure)
+      plots = list(PSPplot = PSPplot, PSPmeasure = PSPmeasure),
+      max_assumed_growth_rate = 1.5
     )
 
     problematicTrees        <- qcResult$problematicTrees
@@ -412,23 +422,17 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
     # Apply QC level 1 if QCaction >= 1
     if (QCaction >= 1) {
       # Remove the flagged measurements and ALL later measurements in those plots
-      flaggedMeas <- PSPmeasure[MeasureID %in% problematicMeasurements,
-                                .(firstFlagYear = min(MeasureYear)),
-                                by = OrigPlotID1]
-      # For plots with a flagged measurement: keep only records before the first flagged year
-      precedentMeasures <- PSPmeasure[flaggedMeas, on = "OrigPlotID1", nomatch = 0L][
-        MeasureYear < firstFlagYear
-      ][, firstFlagYear := NULL]
-
-      cleanMeasures <- PSPmeasure[!flaggedMeas, on = "OrigPlotID1"]
-      PSPmeasure <- rbind(precedentMeasures, cleanMeasures)
+      #the problematic measurements already include subsequent measurements following 100% regen 
+      flaggedMeas <- PSPmeasure[MeasureID %in% problematicMeasurements,]
+      PSPmeasure <- PSPmeasure[!MeasureID %in% problematicMeasurements,]
     }
 
     # Apply QC level 2 if QCaction >= 2
     if (QCaction >= 2) {
       # Remove only the flagged trees; keep all other trees and measurements
       # in those plots/measurements untouched.
-      PSPmeasure <- PSPmeasure[!problematicTrees, on = .(OrigPlotID1, MeasureID, TreeNumber)]
+      #confirm this removes from all MeasureIDs (including subsequent)
+      PSPmeasure <- PSPmeasure[!problematicTrees, on = .(OrigPlotID1, TreeNumber)]
     }
 
     # Apply QC level 3 if QCaction >= 3
@@ -475,7 +479,10 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
   } else {
     message("QCaction = 0: skipping tree number consistency assessment.")
   }
-
+  
+  #remove trees where DBH falls below the standardized parameter minDBH_tag
+  PSPmeasure <- PSPmeasure[DBH >= minDBH_tag,]
+  
   ## might as well drop species with no biomass match
 
   ## `length(PSPclimData)/length(PSP_sa)` should always yield a whole number.
@@ -488,12 +495,10 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
   PSPclimData[Year > min(PSPperiod) & Year < max(PSPperiod),]
   message(yellow(paste0("There are "), length(unique(PSPplot$OrigPlotID1)), " PSPs in the study period"))
   ## Join data (should be small enough by now)
-  PSPmeasure <- PSPmeasure[PSPplot, on = c('MeasureID', 'OrigPlotID1', 'MeasureYear')]
+  PSPplot <- PSPplot[MeasureID %in% PSPmeasure$MeasureID,] #drop any measurements that have been remoevd
+  PSPmeasure <- PSPmeasure[PSPplot, on = c('MeasureID', 'OrigPlotID1', 'MeasureYear', 'source')]
 
   ## Restrict to trees > minDBH
-  message(yellow("Filtering by min. DBH"))
-  PSPmeasure <- PSPmeasure[DBH >= minDBH,]
-
 
   ## Filter by min size
   message(yellow("Filtering by min. plot size"))
@@ -542,6 +547,7 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
   ## Filter by > minTrees at first measurement (P) to ensure forest. Default 30
   # This MUST occur after trees without biomass are removed, or you may have no trees to measure
   message(yellow("Filtering by minimum trees in earliest measurement"))
+
   forestPlots <- PSPmeasure[MeasureYear == baseYear, .(measures = .N), OrigPlotID1] %>%
     .[measures >= minTrees,]
   PSPmeasure <- PSPmeasure[OrigPlotID1 %in% forestPlots$OrigPlotID1,]
@@ -581,7 +587,7 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
 
   #Calculate mean of climate variables
   pSppChange <- lapply(unique(PSPplot$OrigPlotID1),
-                       FUN = sumPeriod, m = PSPmeasure, p = PSPplot, dbh = minDBH,
+                       FUN = sumPeriod, m = PSPmeasure, p = PSPplot, dbh = minDBH_tag,
                        clim = PSPclimData, climVar = tempVariableNames)
   PSPmodelData <- rbindlist(pSppChange)
 
