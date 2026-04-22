@@ -38,8 +38,16 @@ defineModule(sim, list(
     #TODO: review this parameter once the climate normal data is avaiable for PSPs (currently only 2001-2020 via climr)
     defineParameter("doAssertion", "logical", getOption("LandR.assertions"), NA, NA,
                     desc = "assertions used to check climate data for NA values in valid pixels"),
-    defineParameter("doPlotting", "logical", TRUE, NA, NA, desc = paste("if true, will plot and save models")),
-    defineParameter("growthKFolds", "numeric", 5, 0, Inf, desc = paste("number of K-folds applied to xgBoost climate-sensetive growth model")),
+    defineParameter("doPlotting", "logical", TRUE, NA, NA, 
+                    desc = paste("if true, will plot and save models")),
+    defineParameter("growthKFolds", "numeric", 5, 0, Inf, 
+                    desc = paste("number of K-folds applied to xgBoost climate-sensetive growth model")),
+    defineParameter("maxDBHperYear", "numeric", 1, 0, Inf, 
+                    paste("Q/C parameter dictating maximum expected increase in DBH per year for newly measured trees,", 
+                          "above which measurements are treated as erroneous and removed from the dataset")),
+    defineParameter("maxIntervalPeriod", "numeric", 10, 1, Inf, 
+                    paste("the maximum length of measurement interval to allow before discarding an observation.", 
+                          "The climate is averaged between measurements, so the longer the interval, the more noise")),
     defineParameter("minDBH", "numeric", 9.7, 0, NA,
                     desc = "The minimum DBH (cm) allowed. Each province uses different criteria for monitoring trees,
                     so a conservative threshold is advised The following are approximations: ",
@@ -204,6 +212,8 @@ Init <- function(sim) {
       minMeasures = P(sim)$minMeasures,
       minSize = P(sim)$minSize,
       minTrees = P(sim)$minTrees,
+      max_DBH_year = P(sim)$maxDBHperYear,
+      maxInterval = P(sim)$maxIntervalPeriod,
       QCaction = P(sim)$QCaction) |>
       Cache(userTags = c("gmcsDataPrep", "prepModelData"))
 
@@ -366,10 +376,10 @@ Init <- function(sim) {
   return(invisible(sim))
 }
 
-
 prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
                           PSPmeasure, PSPplot, PSPclimData, useHeight, biomassModel,
-                          PSPperiod, minDBH_tag, minMeasures, minSize, minTrees, QCaction) {
+                          max_DBH_year, PSPperiod, minDBH_tag, minMeasures, minSize, 
+                          maxInterval, minTrees, QCaction) {
 
   #this is necessary for restartSpades to work if the error occurs in this module
   PSPmeasure <- copy(PSPmeasure)
@@ -408,7 +418,7 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
 
     qcResult <- assessTreeNumberConsistency(
       plots = list(PSPplot = PSPplot, PSPmeasure = PSPmeasure),
-      max_assumed_growth_rate = 1.5
+      max_assumed_growth_rate = max_DBH_year
     )
 
     problematicTrees        <- qcResult$problematicTrees
@@ -649,9 +659,13 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
                               "standAge", "logAge", "Species", "growth", "logGrowth",
                               "mortality", "biomass", "netBiomassChng"))
 
+  #lastly subset by period length
+  tooLong <- PSPmodelData[periodLength > maxInterval, .N, .(OrigPlotID1, year)]
+  message("removing ", nrow(tooLong), " measurements for exceeding max interval period of ", maxInterval, " years")
+  PSPmodelData <- PSPmodelData[periodLength <= maxInterval,]
+  
   #calculate biomass as the sum of biomass by species within a plot,
   # and scale growth by biomass
-
   PSPmodelData[, standBiomass := sum(biomass), .(OrigPlotID1, period)]
   PSPmodelData[, growth_over_B := growth/biomass]
   PSPmodelData[, mortality_over_B := mortality/biomass]
@@ -685,41 +699,59 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   living1 <- m1[m1$TreeNumber %in% m2$TreeNumber]
   living2 <- m2[m2$TreeNumber %in% m1$TreeNumber]
   dead <- m1[!m1$TreeNumber %in% m2$TreeNumber]
-  newborn <- m2[!m2$TreeNumber %in% m1$TreeNumber]
+  recruitment <- m2[!m2$TreeNumber %in% m1$TreeNumber]
 
-  if (nrow(newborn) > 0) {
+  if (nrow(recruitment) > 0) {
     #assume that they were 1nth away from minDBH, where n = measurement interval over stand age
     #it should be the censusLength + baseSA,
-    newborn_interpolated <- copy(newborn)
+    recruitment_extrapolated <- copy(recruitment)
     currentAge <- P$MeasureYear[i + 1] - P$baseYear[i + 1] + P$baseSA[i + 1]
-    increment <- (1 - censusLength/currentAge)
+    # increment <- (1 - censusLength/currentAge) this understimated DBH 
+    # recruitment_extrapolated[, DBH := dbh * increment]
     #must use current age to ensure censusLength is always smaller
     #note: dbh in this equation is the minimum dbh threshold
-    newborn_interpolated[, DBH := dbh * increment]
-    if (any(is.na(newborn_interpolated$Height))) {
+    
+    #new method - calculate BAI, take 15th percentile 
+    # it should be low because it is clearly slower growing 
+    BAIs <- copy(living1[, TreeNumber, DBH])
+    setnames(BAIs, "DBH", "prior_DBH")
+    BAIs <- BAIs[living2[, .(TreeNumber, DBH)], on = c("TreeNumber")]
+    
+    BAIs[, prior_basal_area_m2 := (pi * prior_DBH^2)/40000]
+    BAIs[, basal_area_m2 := (pi * DBH^2)/40000]
+    BAIs[, bai := (basal_area_m2 - prior_basal_area_m2)/censusLength]
+    #technically we don't need census length because we just multiply it again...shut up
+    BAI_15pct <- quantile(BAIs$bai, 0.15)
+    recruitment_extrapolated[, bai := BAI_15pct] #purely for plots - its a constant
+    recruitment_extrapolated[, basal_area_m2 := (pi * DBH ^2)/40000]
+    recruitment_extrapolated[, prior_basal_area_m2 := basal_area_m2 - (bai * censusLength)]
+    recruitment_extrapolated[, prior_DBH :=  200 * sqrt(prior_basal_area_m2/pi)]
+    #take the floor of extrapolated DBh and minDBH
+    recruitment_extrapolated[, prior_DBH := pmin(prior_DBH, dbh - 0.1)]
+    #I don't know if the biomass equations allow 0 so for safety, floor is 0.1
+    recruitment_extrapolated[, prior_DBH := pmax(prior_DBH, 0.1)]
+      
+    if (any(is.na(recruitment_extrapolated$Height))) {
       useHeight = FALSE
     } else {
       useHeight = TRUE
     }
-    newborn_interpolated[, biomass := biomassCalculation(SpBiomassEq, DBH, height = Height,
+    recruitment_extrapolated[, biomass := biomassCalculation(SpBiomassEq, prior_DBH, height = Height,
                                                          includeHeight = useHeight)$biomass, ]
-    newborn[, origBiomass := newborn_interpolated$biomass]
+    recruitment[, origBiomass := recruitment_extrapolated$biomass]
 
-    newborn <- newborn[, .(newGrowth = sum(biomass - origBiomass) ,
+    recruitment <- recruitment[, .(newGrowth = sum(biomass - origBiomass)/unique(censusLength),
                            biomass = sum(origBiomass)), .(Species)] |>
       setkey(Species)
   } else {
-
-    newborn <- data.table(Species = character(0), newGrowth = numeric(0), biomass = numeric(0))
+    recruitment <- data.table(Species = character(0), newGrowth = numeric(0), biomass = numeric(0))
   }
-
-
-  if (nrow(living1) != nrow(living2) | nrow(living1) + nrow(newborn) <= 0) {
-
+    if (nrow(living1) != nrow(living2) | nrow(living1) + nrow(recruitment) <= 0) {
     warning("there is a problem in the PSP data with the plots: ", unique(m1$MeasureID), " ", unique(m2$MeasureID))
     return(NULL)
     ## `nrow(living1) == 0` will happen if tree numbers change between measurements
-  }
+    }
+
   ## Find observed annual changes in mortality and growth
   living2$origBiomass <- living1$biomass
   ## growth cannot be negative, by definition
@@ -743,7 +775,7 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   # N <- nrow(t2[DBH <= 15]) # where t2 = the second measurement
   # (I changed t from it's original 'm', to avoid confusion with metres squared and M mortality)
   # #R = number of recruits between two successive censuses (trees in t2 not in t1)/census length
-  # R <- nrow(newborn)/censusLength/N #I am not 100% sure if we divide by N or total stems in plot
+  # R <- nrow(recruitment)/censusLength/N #I am not 100% sure if we divide by N or total stems in plot
   # #M = Mortality rate, n-trees with DBH 10 -15 that died between two census/interval length
   # M <- nrow(dead[DBH <= 15,])/censusLength/N
   # #L = census interval length
@@ -754,13 +786,13 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   # totalM <- UnobservedM + observedMortality
   # totalG <- UnobservedM + observedGrowth
 
-  # changes <- rbind(newborn, living)
+  # changes <- rbind(recruitment, living)
   changes <- living
 
   changes$mortality <- 0
   dead$newGrowth <- 0
-  changes <- rbind(changes, dead, newborn, fill = TRUE) #newborn will be zero here
-
+  changes <- rbind(changes, dead, recruitment, fill = TRUE) #recruitment will be zero here
+  
   #fill NA as zero - regen has no mortality, dead has no growth
   changes[, c("newGrowth", "biomass", "mortality") := lapply(.SD, FUN = nafill, fill = 0),
           .SDcols = c("newGrowth", "biomass", "mortality")]
