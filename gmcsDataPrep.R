@@ -95,6 +95,10 @@ defineModule(sim, list(
                                  "Note that biomass is estimated from tree plot data using the column `PSP`.",
                                  "Combining the models for species with separate biomass equations (e.g. Populus balsamea, Populus treumuloides)",
                                  "is possible by passing a sppEquivCol that has a single value for these entries.")),
+    defineParameter("TuningThreads", "numeric", 1, 0, Inf,
+                    desc = paste("Number of parallel threads for training xgboost. Default is 1, which allows training to run efficiently",
+                                 "when other operations are ongoing. Any higher value will increase speed of tuning on its own, but will",
+                                 "result in major loss of speed when other operations are started. NOTE: Passing zero will use all threads.")),
     defineParameter("useHeight", "logical", TRUE, NA, NA,
                     desc = paste("Use height be used to calculate biomass (in addition to DBH). If height is NA for individual",
                                  "trees, then only DBH will be used for those measurements")),
@@ -266,6 +270,7 @@ Init <- function(sim) {
                                  eval_metric = c("rmse"),
                                  colnamesResp = "logGrowth",
                                  figDir = gDir,
+                                 TuningThreads = P(sim)$TuningThreads,
                                  cachePath = cachePath(sim)) |>
         Cache()
       # compute mean R² across folds, save to simList

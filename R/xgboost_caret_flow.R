@@ -35,7 +35,7 @@
 runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                        eval_metric = c("auc", "rmse", "logloss"),
                        objective = NULL, interaction_constraints = NULL, SHAPthresh = 0,
-                       figDir = NULL, 
+                       figDir = NULL, TuningThreads,
                        cachePath = NULL) {
 
   # Add dummy variables for factor columns -- i.e., the random effects
@@ -216,7 +216,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
 #' @importFrom caret trainControl train caretTheme
 #' @importFrom reproducible Cache
 #' @importFrom lattice trellis.par.set
-.tunexgboost <- function(dig, dat, colnamesResp, figDir, cachePath) {
+.tunexgboost <- function(dig, dat, colnamesResp, figDir, TuningThreads, cachePath) {
   ## use devtools::load_all("C:/Users/cbarros/GitHub/caret/pkg/caret/")
   ## bug reported at: https://github.com/topepo/caret/issues/1412
   savePlot <- FALSE
@@ -255,15 +255,15 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
         data = as.data.frame(dat[, ..colnamesPred]),
         trControl = xgb_trcontrol,
         tuneGrid = param_grid1,
-        
-        method = "xgbTree"
-      ) 
+        method = "xgbTree",
+        nthread = TuningThreads
+      )
     }
   )
-  
+
   paramsF <- xgb_tuned$bestTune
   message(cyan("Finished in", st[["elapsed"]], "sec."))
-  
+
   ## save tuning output
   if (savePlot) {
     png(file.path(figDir, paste0(colnamesResp, "_tuning_learningRate.png")), height = 4, width = 6,
