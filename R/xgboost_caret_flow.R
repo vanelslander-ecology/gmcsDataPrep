@@ -20,6 +20,8 @@
 #'    performace (based on AUC score), in which case one may consider relaxing (i.e. lowering)
 #'    the threshold.
 #' @param figDir if not `NULL`, diagnostic tuning plots will be saved to this directory.
+#' @param xgBoostingThreads number of threads for running xgboost
+#' @param xgTuningThreads number of threads for tuning xgboost
 #' @param cachePath directory to cache results - likely cachePath(sim) if running inside a simulation
 #'
 #' @return a list (one entry per fold) of lists with:
@@ -35,7 +37,7 @@
 runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                        eval_metric = c("auc", "rmse", "logloss"),
                        objective = NULL, interaction_constraints = NULL, SHAPthresh = 0,
-                       figDir = NULL, xgTuningThreads,
+                       figDir = NULL, xgBoostingThreads, xgTuningThreads,
                        cachePath = NULL) {
 
   # Add dummy variables for factor columns -- i.e., the random effects
@@ -120,7 +122,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                              , y = dat[[colnamesResp]][allDataIDs]
                              , interaction_constraints = interaction_constraints
                              # , objective = "reg:tweedie" ## no improvements
-                             , nthread = 10
+                             , nthread = xgBoostingThreads
                              , eval_set = testIDs,
                              , monitor_training = TRUE
                              , eval_metric = eval_metric,
