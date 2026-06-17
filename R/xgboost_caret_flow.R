@@ -90,7 +90,7 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
   params <- .tunexgboost(dig,
                          dat[, .SD, .SDcols = c(colnamesPred, colnamesResp)],
                          colnamesResp = colnamesResp,
-                         figDir, 
+                         figDir, xgTuningThreads,
                          cachePath = cachePath) |>
     Cache(cachePath = cachePath)
 
