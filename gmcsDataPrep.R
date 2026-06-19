@@ -303,6 +303,8 @@ Init <- function(sim) {
                                  eval_metric = c("rmse"),
                                  colnamesResp = "mortality",
                                  figDir = mDir,
+                                 xgTuningThreads = P(sim)$xgTuningThreads,
+                                 xgBoostingThreads = P(sim)$xgBoostingThreads,
                                  cachePath = cachePath(sim)) |>
         Cache()
 
