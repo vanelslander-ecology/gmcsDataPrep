@@ -294,14 +294,15 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                          y = dat[[colnamesResp]],
                          trControl = xgb_trcontrol,
                          tuneGrid = param_grid2,
-                         method = "xgbTree"
+                         method = "xgbTree",
+                         nthread = xgTuningThreads
       )
     }
   )
-  
+
   paramsF <- xgb_tuned$bestTune
   message(cyan("Finished in", st[["elapsed"]], "sec."))   ## about 4hrs
-  
+
   ## save tuning output
   if (savePlot) {
     png(file.path(figDir, paste0(colnamesResp, "_tuning_all.png")), height = 12, width = 12,
@@ -329,16 +330,17 @@ runXGBOOST <- function(dat, dig = NULL, nFolds = 5, colnamesResp = "SEV_PROP",
                          y = dat[[colnamesResp]],
                          trControl = xgb_trcontrol,
                          tuneGrid = param_grid3,
-                         method = "xgbTree"
+                         method = "xgbTree",
+                         nthread = xgTuningThreads
       )
     }
   )
-  
+
   paramsF <- xgb_tuned$bestTune
   message(cyan("Finished in", st[["elapsed"]], "sec."))
   message(cyan("Best parameters:"))
   message(cyan(paste0(capture.output(paramsF), collapse = "\n")))
-  
+
   ## save tuning output
   if (savePlot) {
     png(file.path(figDir, paste0(colnamesResp, "_tuning_nrounds.png")), height = 4, width = 6,
